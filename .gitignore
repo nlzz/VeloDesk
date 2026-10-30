@@ -1,0 +1,21 @@
+# Binaries & Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.bin
+server/velodesk-server
+agent/target/
+viewer/dist/
+viewer/node_modules/
+
+# Environment files
+.env
+infra/.env
+
+# Temporary files & logs
+*.log
+tmp/
+.DS_Store
+Thumbs.db

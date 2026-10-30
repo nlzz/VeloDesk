@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VeloDesk — Signaling & WebRTC Control Panel</title>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: #1e293b;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-main);
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      background: #1e3a8a;
+      color: #93c5fd;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.875rem;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: #334155;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+    }
+    .dot.connected { background: var(--success); }
+    .dot.disconnected { background: var(--error); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 12px;
+      color: #cbd5e1;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 6px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 12px;
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.9rem;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.875rem;
+      background: var(--accent);
+      color: white;
+      transition: background 0.15s;
+      margin-top: 12px;
+      gap: 6px;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn-secondary {
+      background: #475569;
+    }
+    .btn-secondary:hover {
+      background: #334155;
+    }
+    .btn-danger {
+      background: var(--error);
+    }
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .terminal {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      height: 280px;
+      overflow-y: auto;
+      color: #cbd5e1;
+    }
+
+    .log-entry { margin-bottom: 4px; word-break: break-all; }
+    .log-in { color: #38bdf8; }
+    .log-out { color: #4ade80; }
+    .log-err { color: #f87171; }
+    .log-sys { color: #fbbf24; }
+
+    pre {
+      background: #0b1120;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      overflow-x: auto;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>⚡ VeloDesk <span class="badge">Signaling & WebRTC Hub</span></h1>
+      <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 4px;">Console de Operação e Testes de Sinalização WebSocket</p>
+    </div>
+    <div class="status-pill">
+      <div id="statusDot" class="dot"></div>
+      <span id="statusText">Conectando...</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- Simulação do Host Agent -->
+    <div class="card">
+      <h2>🖥️ Host Agent (Simulador)</h2>
+      <label>ID do Agente</label>
+      <input type="text" id="agentId" value="832-192-041" placeholder="ex: 832-192-041">
+
+      <label>Hostname</label>
+      <input type="text" id="agentHost" value="PC-TESTE-WIN11">
+
+      <label>Hash de Senha (Opcional)</label>
+      <input type="text" id="agentPwd" value="" placeholder="Vazio = sem senha">
+
+      <div style="display: flex; gap: 8px;">
+        <button class="btn" onclick="registerAgent()">Registrar Agente</button>
+        <button class="btn btn-secondary" onclick="sendHeartbeat()">Ping</button>
+      </div>
+    </div>
+
+    <!-- Simulação do Viewer / Operador -->
+    <div class="card">
+      <h2>👨‍💻 Viewer / Técnico (Conexão)</h2>
+      <label>ID do Agente Alvo</label>
+      <input type="text" id="targetId" value="832-192-041" placeholder="ID de 9 dígitos">
+
+      <label>Senha / Hash</label>
+      <input type="password" id="viewerPwd" placeholder="Se requerido pelo agente">
+
+      <label>Nome do Técnico</label>
+      <input type="text" id="operatorName" value="Técnico Suporte VeloDesk">
+
+      <div style="display: flex; gap: 8px;">
+        <button class="btn" onclick="requestConnect()">Solicitar Conexão</button>
+        <button class="btn btn-danger" onclick="sendDisconnect()">Desconectar</button>
+      </div>
+    </div>
+
+    <!-- Ferramentas STUN / TURN -->
+    <div class="card">
+      <h2>🌐 STUN & TURN Relay Status</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">
+        Credenciais efêmeras calculadas via HMAC-SHA1 na VPS Staycloud.
+      </p>
+      <button class="btn btn-secondary" onclick="fetchTurnCreds()">Buscar Credenciais TURN</button>
+      <pre id="turnOutput">// Clique acima para carregar credenciais...</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <h2>📋 Log de Eventos de Sinalização (Tempo Real)</h2>
+      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="clearLogs()">Limpar Log</button>
+    </div>
+    <div id="terminal" class="terminal"></div>
+  </div>
+
+  <script>
+    let ws = null;
+    let currentSessionId = "";
+    const terminal = document.getElementById("terminal");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+
+    function log(msg, type = "sys") {
+      const entry = document.createElement("div");
+      entry.className = `log-entry log-${type}`;
+      const time = new Date().toLocaleTimeString();
+      entry.textContent = `[${time}] ${msg}`;
+      terminal.appendChild(entry);
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function clearLogs() {
+      terminal.innerHTML = "";
+    }
+
+    function initWebSocket() {
+      const loc = window.location;
+      const proto = loc.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${proto}//${loc.host}/ws`;
+
+      log(`Conectando ao WebSocket de sinalização em ${wsUrl}...`, "sys");
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        statusDot.className = "dot connected";
+        statusText.textContent = "Conectado";
+        log("Conexão WebSocket estabelecida com sucesso!", "sys");
+      };
+
+      ws.onclose = () => {
+        statusDot.className = "dot disconnected";
+        statusText.textContent = "Desconectado";
+        log("Conexão WebSocket encerrada. Tentando reconectar em 3s...", "err");
+        setTimeout(initWebSocket, 3000);
+      };
+
+      ws.onerror = (err) => {
+        log(`Erro no WebSocket: ${err.message || 'Desconhecido'}`, "err");
+      };
+
+      ws.onmessage = (event) => {
+        log(`<= ${event.data}`, "in");
+        try {
+          const msg = JSON.parse(event.data);
+          handleSignalingMessage(msg);
+        } catch (e) {
+          log(`Erro ao parsear JSON: ${e}`, "err");
+        }
+      };
+    }
+
+    function send(data) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log("Erro: WebSocket não está conectado!", "err");
+        return;
+      }
+      const raw = JSON.stringify(data);
+      log(`=> ${raw}`, "out");
+      ws.send(raw);
+    }
+
+    function registerAgent() {
+      const agentId = document.getElementById("agentId").value;
+      const hostname = document.getElementById("agentHost").value;
+      const pwd = document.getElementById("agentPwd").value;
+
+      send({
+        type: "register",
+        agent_id: agentId,
+        hostname: hostname,
+        version: "1.0.0",
+        password_hash: pwd
+      });
+    }
+
+    function requestConnect() {
+      const targetId = document.getElementById("targetId").value;
+      const pwd = document.getElementById("viewerPwd").value;
+      const opInfo = document.getElementById("operatorName").value;
+
+      send({
+        type: "connect_request",
+        target_id: targetId,
+        password_hash: pwd,
+        operator_info: opInfo
+      });
+    }
+
+    function sendHeartbeat() {
+      send({ type: "ping" });
+    }
+
+    function sendDisconnect() {
+      if (!currentSessionId) {
+        log("Nenhuma sessão ativa para desconectar.", "sys");
+        return;
+      }
+      send({
+        type: "disconnect",
+        session_id: currentSessionId,
+        reason: "operador_encerrou"
+      });
+      currentSessionId = "";
+    }
+
+    function handleSignalingMessage(msg) {
+      if (msg.type === "connect_ack") {
+        currentSessionId = msg.session_id;
+        log(`Sessão estabelecida com sucesso! SessionID: ${currentSessionId}`, "sys");
+      } else if (msg.type === "incoming_connection") {
+        currentSessionId = msg.session_id;
+        log(`Conexão entrante recebida de '${msg.operator_info}' (SessionID: ${currentSessionId})`, "sys");
+      } else if (msg.type === "disconnect") {
+        log(`Sessão ${msg.session_id} foi encerrada. Motivo: ${msg.reason}`, "sys");
+        currentSessionId = "";
+      }
+    }
+
+    async function fetchTurnCreds() {
+      try {
+        const res = await fetch("/api/v1/turn-credentials?client_id=web-test");
+        const json = await res.json();
+        document.getElementById("turnOutput").textContent = JSON.stringify(json, null, 2);
+        log("Credenciais TURN obtidas da API REST.", "sys");
+      } catch (e) {
+        log(`Falha ao obter credenciais TURN: ${e}`, "err");
+      }
+    }
+
+    window.addEventListener("load", initWebSocket);
+  </script>
+</body>
+</html>
