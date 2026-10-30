@@ -33,7 +33,7 @@ impl RegisterMessage {
         Self {
             r#type: "register".to_string(),
             agent_id: agent_id.to_string(),
-            version: Some("0.2.0".to_string()),
+            version: Some("1.0.0".to_string()),
             hostname: Some(hostname.to_string()),
             password_hash: if password_hash.is_empty() {
                 None

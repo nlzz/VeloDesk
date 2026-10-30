@@ -1,6 +1,6 @@
 [package]
 name = "velodesk-agent"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["VeloDesk Team"]
 description = "VeloDesk High-Performance Remote Access Agent"
@@ -24,8 +24,12 @@ async-trait = "0.1"
 webrtc = "0.21"
 rtc = "0.21"
 bytes = "1.0"
+argon2 = { version = "0.5", features = ["std", "alloc"] }
+rand_core = { version = "0.6", features = ["std"] }
+sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
@@ -33,7 +37,16 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
     "Win32_Media_MediaFoundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
     "Win32_System_Com",
+    "Win32_System_ProcessStatus",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Services",
+    "Win32_System_StationsAndDesktops",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
     "Graphics_Capture",

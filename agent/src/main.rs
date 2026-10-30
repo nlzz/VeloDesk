@@ -1,17 +1,25 @@
 //! Ponto de Entrada do Host Agent do VeloDesk (`velodesk-agent`).
 //!
 //! Inicializa subsistemas de captura WGC/DXGI, encoder H.264 MFT,
-//! injeção de inputs e cliente de sinalização WebRTC.
+//! injeção de inputs, cliente de sinalização WebRTC, gestão do Windows Service
+//! e suporte completo a UAC e Acesso Autônomo (Argon2id).
 
 pub mod capture;
+pub mod cli;
 pub mod config;
 pub mod encoder;
 pub mod input;
 pub mod protocol;
+pub mod service;
 pub mod signaling;
 pub mod webrtc_session;
 
+use cli::{parse_cli_args, print_help, CliCommand};
 use config::AgentConfig;
+use service::{
+    calculate_sha256, hash_password_argon2, install_service, load_service_config, run_service,
+    save_service_config, start_service, status_service, stop_service, uninstall_service,
+};
 use signaling::SignalingClient;
 use std::env;
 
@@ -22,53 +30,116 @@ async fn main() -> anyhow::Result<()> {
         .format_timestamp_millis()
         .init();
 
+    // Processa os argumentos da linha de comando
+    let cli_opts = parse_cli_args(env::args())?;
+
+    // Despacha comandos de gestão do Windows Service ou Help
+    match cli_opts.command {
+        CliCommand::PrintHelp => {
+            print_help();
+            return Ok(());
+        }
+        CliCommand::InstallService => {
+            println!("Instalando VeloDeskAgent como Windows Service (AutoStart)...");
+            install_service()?;
+            println!("Serviço instalado com sucesso!");
+            return Ok(());
+        }
+        CliCommand::UninstallService => {
+            println!("Desinstalando VeloDeskAgent do Windows Service Control Manager...");
+            uninstall_service()?;
+            println!("Serviço removido com sucesso.");
+            return Ok(());
+        }
+        CliCommand::StartService => {
+            println!("Iniciando serviço VeloDeskAgent...");
+            start_service()?;
+            println!("Serviço iniciado com sucesso.");
+            return Ok(());
+        }
+        CliCommand::StopService => {
+            println!("Enviando sinal de parada para VeloDeskAgent...");
+            stop_service()?;
+            println!("Serviço finalizado com sucesso.");
+            return Ok(());
+        }
+        CliCommand::StatusService => {
+            let status = status_service()?;
+            println!("=== Status do Serviço VeloDesk ===");
+            println!("{status}");
+            return Ok(());
+        }
+        CliCommand::RunAsService => {
+            log::info!("[Agent] Executando em modo Windows Service (Session 0)...");
+            run_service()?;
+            return Ok(());
+        }
+        CliCommand::SetPassword(new_password) => {
+            println!("Derivando hash de chave permanente via Argon2id...");
+            let argon2_hash = hash_password_argon2(&new_password)?;
+            let sha256_hash = calculate_sha256(&new_password);
+
+            let mut cfg = load_service_config(None).unwrap_or_default();
+            cfg.password_hash_argon2 = argon2_hash;
+            cfg.auth_token_sha256 = sha256_hash;
+            cfg.unattended_enabled = true;
+
+            let path = save_service_config(&cfg, None)?;
+            println!("Senha permanente para acesso autônomo configurada com sucesso!");
+            println!("Armazenamento seguro persistido em: {}", path.display());
+            println!("ID do Host: {}", cfg.agent_id);
+            return Ok(());
+        }
+        CliCommand::RunAgent => {
+            // Continua para inicialização do agente interativo
+        }
+    }
+
     log::info!("============================================================");
-    log::info!("  VeloDesk Host Agent v0.2.0 (Rust)");
+    log::info!("  VeloDesk Host Agent v1.0.0 (Rust)");
     log::info!("  Acesso e Suporte Remoto de Alta Performance");
     log::info!("  Captura: Windows Graphics Capture (WGC) / DXGI");
     log::info!("  Encoder: Windows Media Foundation (MFT) H.264");
     log::info!("  Transporte: WebRTC P2P (DTLS-SRTP) com Fallback Coturn");
+    log::info!("  UAC & Secure Desktop: Suportado via Session Injection");
     log::info!("============================================================");
 
     let mut config = AgentConfig::from_env();
 
-    // Leitura simplificada de argumentos de linha de comando
-    let args: Vec<String> = env::args().collect();
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--server" | "-s" if i + 1 < args.len() => {
-                config.server_url = args[i + 1].clone();
-                i += 2;
-            }
-            "--id" if i + 1 < args.len() => {
-                config.agent_id = args[i + 1].clone();
-                i += 2;
-            }
-            "--password" | "-p" if i + 1 < args.len() => {
-                config.password_hash = args[i + 1].clone();
-                i += 2;
-            }
-            "--fps" if i + 1 < args.len() => {
-                if let Ok(fps) = args[i + 1].parse::<u32>() {
-                    config.target_fps = fps;
-                }
-                i += 2;
-            }
-            "--bitrate" if i + 1 < args.len() => {
-                if let Ok(br) = args[i + 1].parse::<u32>() {
-                    config.target_bitrate = br;
-                }
-                i += 2;
-            }
-            "--help" | "-h" => {
-                print_help();
-                return Ok(());
-            }
-            _ => {
-                i += 1;
+    // Se houver configuração persistente de serviço, carrega valores de acesso autônomo
+    if let Ok(svc_cfg) = load_service_config(None) {
+        if svc_cfg.unattended_enabled {
+            log::info!("[Agent] Configuração de acesso autônomo detectada (%ProgramData%).");
+            config.agent_id = svc_cfg.agent_id;
+            config.server_url = svc_cfg.server_url;
+            if !svc_cfg.auth_token_sha256.is_empty() {
+                config.password_hash = svc_cfg.auth_token_sha256;
             }
         }
+    }
+
+    // Sobrescreve com argumentos explícitos de CLI se fornecidos
+    if let Some(srv) = cli_opts.server_url {
+        config.server_url = srv;
+    }
+    if let Some(id) = cli_opts.agent_id {
+        config.agent_id = id;
+    }
+    if let Some(pass) = cli_opts.password_hash {
+        config.password_hash = pass;
+    }
+    if let Some(fps) = cli_opts.target_fps {
+        config.target_fps = fps;
+    }
+    if let Some(br) = cli_opts.target_bitrate {
+        config.target_bitrate = br;
+    }
+
+    if let Some(ref d) = cli_opts.desktop {
+        log::info!("[Agent] Executando associado ao Desktop Win32: '{}'", d);
+    }
+    if cli_opts.is_interactive {
+        log::info!("[Agent] Modo Interativo ativo (Console Session).");
     }
 
     log::info!("[Agent] ID do Host: {}", config.agent_id);
@@ -91,17 +162,4 @@ async fn main() -> anyhow::Result<()> {
 
     log::info!("[Agent] VeloDesk Host Agent finalizado com sucesso.");
     Ok(())
-}
-
-/// Exibe texto de ajuda e parâmetros aceitos pela CLI
-fn print_help() {
-    println!("Uso: velodesk-agent [opções]");
-    println!();
-    println!("Opções:");
-    println!("  --server, -s <URL>    URL WebSocket do servidor de sinalização (padrão: ws://127.0.0.1:8080/ws)");
-    println!("  --id <ID>             Identificador de 9 dígitos customizado (ex: 832-192-041)");
-    println!("  --password, -p <HASH> Hash SHA-256 da senha de acesso do agente");
-    println!("  --fps <NUM>           Taxa de quadros por segundo alvo (padrão: 60)");
-    println!("  --bitrate <NUM>       Taxa de bits alvo em bps (padrão: 4000000 = 4 Mbps)");
-    println!("  --help, -h            Exibe esta mensagem de ajuda");
 }
