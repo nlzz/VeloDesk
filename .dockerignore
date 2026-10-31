@@ -1,8 +1,7 @@
 .git
 .agents
 agent/
-viewer/node_modules/
-viewer/src/
-viewer/dist/
 target/
+viewer/node_modules/
+node_modules/
 *.md
