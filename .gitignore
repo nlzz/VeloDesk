@@ -10,7 +10,6 @@ agent/target/
 viewer/src-tauri/target/
 target/
 viewer/dist/
-dist/
 viewer/node_modules/
 node_modules/
 

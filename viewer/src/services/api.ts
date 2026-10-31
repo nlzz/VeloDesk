@@ -196,6 +196,11 @@ class ApiService {
       throw new Error(errMsg);
     }
 
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Resposta inesperada do servidor: esperado JSON, recebido ${contentType || 'texto'}`);
+    }
+
     return response.json();
   }
 
