@@ -1,0 +1,30 @@
+{
+  "name": "velodesk",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "viewer"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=viewer",
+    "build": "npm run build --workspace=viewer && node scripts/copy-dist.js",
+    "preview": "npm run preview --workspace=viewer",
+    "test": "npm run test --workspace=viewer"
+  },
+  "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
+    "@tauri-apps/api": "^2.2.0",
+    "lucide-react": "^0.475.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}
