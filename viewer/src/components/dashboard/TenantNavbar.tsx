@@ -1,5 +1,6 @@
 import React from 'react';
-import { Monitor, LifeBuoy, ShieldCheck, Zap, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Monitor, LifeBuoy, ShieldCheck, Zap, LogOut, Shield } from 'lucide-react';
 import { TenantInfo, UserInfo } from '../../services/api';
 
 export type DashboardTab = 'devices' | 'helpdesk' | 'audit' | 'direct';
@@ -21,6 +22,11 @@ export const TenantNavbar: React.FC<TenantNavbarProps> = ({
   onLogout,
   pendingTicketsCount,
 }) => {
+  const navigate = useNavigate();
+  const isSuperAdmin =
+    user?.role === 'SUPERADMIN' ||
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'LEGACY_SUPER_ADMIN';
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -109,6 +115,18 @@ export const TenantNavbar: React.FC<TenantNavbarProps> = ({
 
         {/* User Info & Actions */}
         <div className="flex items-center gap-3">
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => navigate('/admin')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 hover:border-amber-400 hover:text-amber-200 transition shadow-md shadow-amber-500/10 cursor-pointer"
+              title="Retornar ao Painel Master Super-Admin"
+            >
+              <Shield className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+              <span>🛡️ Painel Master</span>
+            </button>
+          )}
+
           <div className="text-right">
             <div className="text-xs font-semibold text-slate-200">{user.name}</div>
             <div className="text-[10px] font-mono text-slate-400">{user.role}</div>

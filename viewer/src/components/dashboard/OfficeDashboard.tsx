@@ -405,6 +405,8 @@ export const OfficeDashboard: React.FC<OfficeDashboardProps> = ({ defaultTab = '
             tags={tags}
             onConnect={(agentId) => handleConnect(agentId)}
             isLoading={isLoadingDashboard}
+            onRefresh={loadDashboardData}
+            tenant={tenant}
           />
         )}
 

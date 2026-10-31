@@ -179,6 +179,9 @@ class ApiService {
     if (this.currentTenant?.slug) {
       headers['X-Tenant-Slug'] = this.currentTenant.slug;
     }
+    if (this.currentTenant?.id && this.currentTenant.id !== 'global') {
+      headers['X-Tenant-ID'] = this.currentTenant.id;
+    }
 
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...options,
@@ -294,8 +297,22 @@ class ApiService {
     return this.request<DeviceGroup[]>('/api/v1/groups');
   }
 
+  public async createGroup(name: string, parentId?: string): Promise<DeviceGroup> {
+    return this.request<DeviceGroup>('/api/v1/groups', {
+      method: 'POST',
+      body: JSON.stringify({ name, parent_id: parentId }),
+    });
+  }
+
   public async listTags(): Promise<DeviceTag[]> {
     return this.request<DeviceTag[]>('/api/v1/tags');
+  }
+
+  public async createTag(name: string, colorHex?: string): Promise<DeviceTag> {
+    return this.request<DeviceTag>('/api/v1/tags', {
+      method: 'POST',
+      body: JSON.stringify({ name, color_hex: colorHex }),
+    });
   }
 
   // Helpdesk Tickets
