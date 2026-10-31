@@ -8,6 +8,12 @@
 pub enum CliCommand {
     /// Execução interativa normal do agente
     RunAgent,
+    /// Execução com ícone na bandeja do sistema (System Tray) e suporte
+    RunTray,
+    /// Solicitação de suporte com 1 clique e anexo de print da tela
+    RequestSupport,
+    /// Exibe metadados embutidos via PE Overlay (se presentes)
+    InspectOverlay,
     /// Instalação do agente como Windows Service com inicialização automática (AutoStart)
     InstallService,
     /// Remoção do agente do Windows Service Control Manager
@@ -78,6 +84,18 @@ where
         match arg.as_str() {
             "--install-service" => {
                 options.command = CliCommand::InstallService;
+                i += 1;
+            }
+            "--tray" => {
+                options.command = CliCommand::RunTray;
+                i += 1;
+            }
+            "--request-support" => {
+                options.command = CliCommand::RequestSupport;
+                i += 1;
+            }
+            "--overlay-info" => {
+                options.command = CliCommand::InspectOverlay;
                 i += 1;
             }
             "--uninstall-service" => {

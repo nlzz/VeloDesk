@@ -218,6 +218,7 @@ O agente deve versionar o código de forma atômica e padronizada:
      * Fase 2: `git tag -a v0.2.0-phase2 -m "Conclusão da Fase 2: Agent em Rust e Captura WGC"`
      * Fase 3: `git tag -a v0.3.0-phase3 -m "Conclusão da Fase 3: Viewer Web e Tauri"`
      * Fase 4: `git tag -a v1.0.0 -m "VeloDesk v1.0.0: Suporte Completo com UAC e Serviço Windows"`
+     * Fase 5: `git tag -a v2.0.0 -m "VeloDesk v2.0.0: Enterprise Multi-Tenant SaaS, Helpdesk, Chat e Blindagem LGPD"`
 
 ---
 
@@ -235,3 +236,31 @@ Quando criar a pasta do novo projeto (ex: `D:\Code\VeloDesk`):
    git commit -m "chore: inicializar estrutura de engenharia, skill e macro do VeloDesk"
    ```
 5. O agente carregará todas as regras e o roteiro automaticamente e seguirá para a Fase 2!
+
+---
+
+## 9. Fase 5: VeloDesk v2.0 (Enterprise Multi-Tenant SaaS, Helpdesk e Blindagem LGPD)
+
+### 9.1 Módulo 1: Banco de Dados & Multi-Tenancy RLS
+* PostgreSQL com Row-Level Security (RLS) mandatório via `SET LOCAL app.current_tenant_id = ?`.
+* Schemas completos: `tenants`, `users`, `device_groups`, `tags`, `devices`, `device_tags`, `tickets`, `ticket_messages`, `sessions`, `file_transfers`, `audit_events`.
+* Argon2id para senhas e HMAC-SHA256 para eventos de auditoria.
+
+### 9.2 Módulo 2: VeloDesk Web Hub & API em Go
+* Endpoints REST com JWT para autenticação multi-tenant e RBAC.
+* WebSockets para sinalização WebRTC, chat bidirecional e notificações em tempo real.
+* Hash Chaining sequencial SHA-256 à prova de adulteração.
+* Sincronização temporal NTP Stratum 1 (pool.ntp.br) com Chrony no container.
+
+### 9.3 Módulo 3: Painel Web do Técnico & Viewer
+* White-label dinâmico com injeção de CSS customizado por slug de tenant.
+* Dashboard completo: "Meus Dispositivos", "Fila de Chamados / Helpdesk" com conexão em 1 clique, e "Auditoria Forense".
+* Integração de chat e transferência de arquivos com hash SHA-256 na sessão WebRTC.
+
+### 9.4 Módulo 4: Agente Windows, Tray App e Privacidade LGPD
+* System Tray App para abertura de chamados com print de tela e chat.
+* Leitor de metadados PE Overlay para instaladores personalizados sem recompilação.
+* Moldura perimetral colorida (4px), banner TopMost com botão de pânico (*Kill Switch*).
+* Preempção de mouse físico local por 3 segundos.
+* Mascaramento de campos de senha (UI Automation) e quarentena de arquivos com varredura Windows AMSI (`AmsiScanBuffer`).
+

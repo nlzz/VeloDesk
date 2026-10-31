@@ -11,6 +11,8 @@ interface RemoteSessionProps {
   onSendInput: (msg: InputMessage) => void;
   onSendShortcut: (shortcut: 'ctrl_alt_del' | 'win_d' | 'ctrl_shift_esc' | 'alt_tab' | 'win_l') => void;
   onDisconnect: () => void;
+  onOpenChat?: () => void;
+  onOpenFileTransfer?: () => void;
 }
 
 export const RemoteSession: React.FC<RemoteSessionProps> = ({
@@ -20,6 +22,8 @@ export const RemoteSession: React.FC<RemoteSessionProps> = ({
   onSendInput,
   onSendShortcut,
   onDisconnect,
+  onOpenChat,
+  onOpenFileTransfer,
 }) => {
   const [scaleMode, setScaleMode] = useState<'contain' | 'original' | 'fill'>('contain');
 
@@ -33,6 +37,8 @@ export const RemoteSession: React.FC<RemoteSessionProps> = ({
         onScaleModeChange={setScaleMode}
         onSendShortcut={onSendShortcut}
         onDisconnect={onDisconnect}
+        onOpenChat={onOpenChat}
+        onOpenFileTransfer={onOpenFileTransfer}
       />
 
       {/* Área Central de Visualização e Captura de Input */}

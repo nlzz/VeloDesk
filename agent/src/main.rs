@@ -8,7 +8,10 @@ pub mod capture;
 pub mod cli;
 pub mod config;
 pub mod encoder;
+pub mod helpdesk;
 pub mod input;
+pub mod overlay;
+pub mod privacy;
 pub mod protocol;
 pub mod service;
 pub mod signaling;
@@ -16,6 +19,9 @@ pub mod webrtc_session;
 
 use cli::{parse_cli_args, print_help, CliCommand};
 use config::AgentConfig;
+use helpdesk::{capture_desktop_screenshot, SystemTrayController, TrayCommand};
+use overlay::read_overlay_from_file;
+use privacy::PrivacyManager;
 use service::{
     calculate_sha256, hash_password_argon2, install_service, load_service_config, run_service,
     save_service_config, start_service, status_service, stop_service, uninstall_service,
@@ -90,8 +96,34 @@ async fn main() -> anyhow::Result<()> {
             println!("ID do Host: {}", cfg.agent_id);
             return Ok(());
         }
-        CliCommand::RunAgent => {
-            // Continua para inicialização do agente interativo
+        CliCommand::RequestSupport => {
+            println!("Capturando tela do usuário para abertura de chamado...");
+            let screenshot = capture_desktop_screenshot()?;
+            println!(
+                "Print da tela capturado com sucesso (tamanho: {} bytes).",
+                screenshot.len()
+            );
+            println!("Chamado pronto para envio à central de suporte.");
+            return Ok(());
+        }
+        CliCommand::InspectOverlay => {
+            let current_exe = env::current_exe()?;
+            match read_overlay_from_file(&current_exe)? {
+                Some(meta) => {
+                    println!("=== Metadados PE Overlay Detectados ===");
+                    println!("Tenant ID   : {}", meta.tenant_id);
+                    println!("Tenant Slug : {}", meta.tenant_slug);
+                    println!("Tenant Name : {}", meta.tenant_name);
+                    println!("Server URL  : {}", meta.server_url);
+                }
+                None => {
+                    println!("Nenhum metadado de Overlay detectado neste executável.");
+                }
+            }
+            return Ok(());
+        }
+        CliCommand::RunAgent | CliCommand::RunTray => {
+            // Continua para inicialização do agente interativo ou modo tray
         }
     }
 
@@ -106,7 +138,21 @@ async fn main() -> anyhow::Result<()> {
 
     let mut config = AgentConfig::from_env();
 
-    // Se houver configuração persistente de serviço, carrega valores de acesso autônomo
+    // 1. Verifica metadados embutidos no binário via PE Overlay (White-Label)
+    let mut tenant_name = "VeloDesk Enterprise".to_string();
+    if let Ok(exe_path) = env::current_exe() {
+        if let Ok(Some(overlay)) = read_overlay_from_file(&exe_path) {
+            log::info!(
+                "[Overlay] Metadados Enterprise detectados via PE Overlay: Tenant '{}' ({})",
+                overlay.tenant_name,
+                overlay.tenant_slug
+            );
+            config.server_url = overlay.server_url;
+            tenant_name = overlay.tenant_name;
+        }
+    }
+
+    // 2. Se houver configuração persistente de serviço, carrega valores de acesso autônomo
     if let Ok(svc_cfg) = load_service_config(None) {
         if svc_cfg.unattended_enabled {
             log::info!("[Agent] Configuração de acesso autônomo detectada (%ProgramData%).");
@@ -141,6 +187,34 @@ async fn main() -> anyhow::Result<()> {
     if cli_opts.is_interactive {
         log::info!("[Agent] Modo Interativo ativo (Console Session).");
     }
+
+    // 3. Inicializa Salvaguardas Mandatórias LGPD & Quarentena AMSI
+    let _privacy = PrivacyManager::new()?;
+    log::info!(
+        "[Privacy] Subsistemas LGPD (Moldura 4px, Kill Switch, Preempção e AMSI) carregados."
+    );
+
+    // 4. Inicia System Tray se solicitado ou modo interativo
+    let _tray_controller = if cli_opts.command == CliCommand::RunTray {
+        let tray = SystemTrayController::new(&tenant_name);
+        tray.start(|cmd| match cmd {
+            TrayCommand::RequestSupport => {
+                log::info!("[Tray] Usuário solicitou suporte via bandeja.");
+            }
+            TrayCommand::CheckStatus => {
+                log::info!("[Tray] Verificação de status do agente.");
+            }
+            TrayCommand::EndSession => {
+                log::warn!("[Tray] Encerramento imediato de sessão solicitado pelo cliente.");
+            }
+            TrayCommand::Exit => {
+                log::info!("[Tray] Finalização do Tray.");
+            }
+        });
+        Some(tray)
+    } else {
+        None
+    };
 
     log::info!("[Agent] ID do Host: {}", config.agent_id);
     log::info!("[Agent] Hostname: {}", config.hostname);

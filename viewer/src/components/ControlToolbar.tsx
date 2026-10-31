@@ -8,6 +8,8 @@ import {
   Pin,
   PinOff,
   Zap,
+  MessageSquare,
+  UploadCloud,
 } from 'lucide-react';
 import { StatsBadge } from './StatsBadge';
 import { WebRTCStatsSummary } from '../services/stats';
@@ -19,6 +21,8 @@ interface ControlToolbarProps {
   onScaleModeChange: (mode: 'contain' | 'original' | 'fill') => void;
   onSendShortcut: (shortcut: 'ctrl_alt_del' | 'win_d' | 'ctrl_shift_esc' | 'alt_tab' | 'win_l') => void;
   onDisconnect: () => void;
+  onOpenChat?: () => void;
+  onOpenFileTransfer?: () => void;
 }
 
 export const ControlToolbar: React.FC<ControlToolbarProps> = ({
@@ -28,6 +32,8 @@ export const ControlToolbar: React.FC<ControlToolbarProps> = ({
   onScaleModeChange,
   onSendShortcut,
   onDisconnect,
+  onOpenChat,
+  onOpenFileTransfer,
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showShortcutsMenu, setShowShortcutsMenu] = useState(false);
@@ -167,6 +173,30 @@ export const ControlToolbar: React.FC<ControlToolbarProps> = ({
         >
           {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
+
+        {/* In-Session Chat */}
+        {onOpenChat && (
+          <button
+            type="button"
+            onClick={onOpenChat}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700/80 text-blue-400 hover:text-white transition"
+            title="Chat com o Operador Remoto"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+          </button>
+        )}
+
+        {/* File Transfer */}
+        {onOpenFileTransfer && (
+          <button
+            type="button"
+            onClick={onOpenFileTransfer}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700/80 text-emerald-400 hover:text-white transition"
+            title="Transferir Arquivos (AMSI Scanned)"
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         {/* Fixar Barra */}
         <button

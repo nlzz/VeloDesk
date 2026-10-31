@@ -21,20 +21,38 @@ pub trait InputInjector: Send + Sync {
     fn inject(&self, msg: &InputMessage) -> Result<(), InjectError>;
 }
 
+use std::sync::Arc;
+
 /// Injetor padrão de produção que utiliza as APIs nativas do Windows
-#[derive(Debug, Default, Clone)]
-pub struct DefaultInputInjector;
+#[derive(Default, Clone)]
+pub struct DefaultInputInjector {
+    preemption: Option<Arc<crate::privacy::InputPreemptionManager>>,
+}
 
 impl DefaultInputInjector {
     /// Cria uma nova instância do injetor padrão
     pub fn new() -> Self {
-        Self
+        Self { preemption: None }
+    }
+
+    /// Cria injetor integrado à salvaguarda de preempção física LGPD
+    pub fn with_preemption(preemption: Arc<crate::privacy::InputPreemptionManager>) -> Self {
+        Self {
+            preemption: Some(preemption),
+        }
     }
 
     /// Envia uma lista de estruturas INPUT para o subsistema Win32 de forma segura
     fn send_inputs(&self, inputs: &[INPUT]) -> Result<(), InjectError> {
         if inputs.is_empty() {
             return Ok(());
+        }
+
+        if let Some(ref p) = self.preemption {
+            if p.is_blocked_sync() {
+                log::debug!("[InputInjector] Entrada remota descartada por preempção local ativa.");
+                return Ok(());
+            }
         }
 
         // SAFETY: Passamos uma fatia válida e contígua de structs `INPUT` inicializadas

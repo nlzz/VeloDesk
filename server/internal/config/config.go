@@ -8,14 +8,18 @@ import (
 
 // Config armazena as configurações de ambiente do VeloDesk Server
 type Config struct {
-	Port           string
-	TurnSecret     string
-	TurnRealm      string
-	StunURL        string
-	TurnURL        string
-	TurnTTL        time.Duration
-	StaticDir      string
-	AllowedOrigins []string
+	Port               string
+	TurnSecret         string
+	TurnRealm          string
+	StunURL            string
+	TurnURL            string
+	TurnTTL            time.Duration
+	StaticDir          string
+	AllowedOrigins     []string
+	DatabaseURL        string
+	JWTSecret          string
+	AuditMasterKey     string
+	SuperAdminPassword string
 }
 
 // LoadConfig carrega as configurações das variáveis de ambiente com fallbacks seguros
@@ -26,6 +30,10 @@ func LoadConfig() *Config {
 	stunURL := getEnv("STUN_URL", "stun:turn.velodesk.local:3478")
 	turnURL := getEnv("TURN_URL", "turn:turn.velodesk.local:3478")
 	staticDir := getEnv("STATIC_DIR", "./web")
+	databaseURL := getEnv("DATABASE_URL", "")
+	jwtSecret := getEnv("JWT_SECRET", "velodesk_enterprise_jwt_super_secret_key_32_bytes")
+	auditMasterKey := getEnv("AUDIT_MASTER_KEY", "velodesk_forensic_audit_hmac_master_secret_2026")
+	superAdminPassword := getEnv("SUPER_ADMIN_PASSWORD", "VelodeskSuperAdmin2026!")
 
 	ttlSecsStr := getEnv("TURN_TTL_SECONDS", "86400")
 	ttlSecs, err := strconv.Atoi(ttlSecsStr)
@@ -34,14 +42,18 @@ func LoadConfig() *Config {
 	}
 
 	return &Config{
-		Port:           port,
-		TurnSecret:     turnSecret,
-		TurnRealm:      turnRealm,
-		StunURL:        stunURL,
-		TurnURL:        turnURL,
-		TurnTTL:        time.Duration(ttlSecs) * time.Second,
-		StaticDir:      staticDir,
-		AllowedOrigins: []string{"*"},
+		Port:               port,
+		TurnSecret:         turnSecret,
+		TurnRealm:          turnRealm,
+		StunURL:            stunURL,
+		TurnURL:            turnURL,
+		TurnTTL:            time.Duration(ttlSecs) * time.Second,
+		StaticDir:          staticDir,
+		AllowedOrigins:     []string{"*"},
+		DatabaseURL:        databaseURL,
+		JWTSecret:          jwtSecret,
+		AuditMasterKey:     auditMasterKey,
+		SuperAdminPassword: superAdminPassword,
 	}
 }
 

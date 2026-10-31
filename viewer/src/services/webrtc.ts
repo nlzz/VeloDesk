@@ -243,6 +243,20 @@ export class WebRTCClient {
   }
 
   /**
+   * Envia mensagem arbitrária de controle (chat, transferência de arquivo) pelo canal velodesk-control.
+   */
+  public sendControl(data: any): void {
+    if (this.controlChannel && this.controlChannel.readyState === 'open') {
+      try {
+        const payload = typeof data === 'string' ? data : JSON.stringify(data);
+        this.controlChannel.send(payload);
+      } catch (err) {
+        console.warn('[WebRTC] Erro ao enviar mensagem de controle:', err);
+      }
+    }
+  }
+
+  /**
    * Envia comando de controle ou atalho especial do sistema.
    */
   public sendSpecialShortcut(
