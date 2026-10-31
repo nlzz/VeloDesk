@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"velodesk-server/internal/audit"
-	"velodesk-server/internal/auth"
 	"velodesk-server/internal/database"
 	"velodesk-server/internal/hub"
 )
@@ -29,17 +28,7 @@ func NewTicketHandler(store database.Store, realtimeHub *hub.RealtimeHub, auditM
 
 // HandleTickets lida com a listagem e criação de novos chamados
 func (h *TicketHandler) HandleTickets(w http.ResponseWriter, r *http.Request) {
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	var tenantID uuid.UUID
-
-	if claimsVal != nil {
-		claims := claimsVal.(*auth.JWTClaims)
-		tenantID = claims.TenantID
-	} else if tenantVal := r.Context().Value(ContextKeyTenant); tenantVal != nil {
-		tenant := tenantVal.(*database.Tenant)
-		tenantID = tenant.ID
-	}
-
+	tenantID := GetEffectiveTenantID(r)
 	if tenantID == uuid.Nil {
 		ErrorResponse(w, http.StatusUnauthorized, "Tenant não identificado")
 		return
@@ -126,18 +115,9 @@ func (h *TicketHandler) HandleTickets(w http.ResponseWriter, r *http.Request) {
 
 // HandleTicketOperations lida com rotas aninhadas (/api/v1/tickets/:id/*)
 func (h *TicketHandler) HandleTicketOperations(w http.ResponseWriter, r *http.Request) {
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	var tenantID uuid.UUID
-	if claimsVal != nil {
-		claims := claimsVal.(*auth.JWTClaims)
-		tenantID = claims.TenantID
-	} else if tenantVal := r.Context().Value(ContextKeyTenant); tenantVal != nil {
-		tenant := tenantVal.(*database.Tenant)
-		tenantID = tenant.ID
-	}
-
+	tenantID := GetEffectiveTenantID(r)
 	if tenantID == uuid.Nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+		ErrorResponse(w, http.StatusUnauthorized, "Tenant não identificado")
 		return
 	}
 

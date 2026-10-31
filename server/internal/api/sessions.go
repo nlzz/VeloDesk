@@ -26,16 +26,21 @@ func NewSessionHandler(store database.Store, auditMgr *audit.Manager) *SessionHa
 
 // HandleSessions gerencia listagem e início de sessões de controle remoto
 func (h *SessionHandler) HandleSessions(w http.ResponseWriter, r *http.Request) {
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
+
+	claimsVal := r.Context().Value(ContextKeyClaims)
+	var claims *auth.JWTClaims
+	if claimsVal != nil {
+		claims = claimsVal.(*auth.JWTClaims)
+	}
 
 	switch r.Method {
 	case http.MethodGet:
-		sessions, err := h.store.ListSessions(r.Context(), claims.TenantID)
+		sessions, err := h.store.ListSessions(r.Context(), tenantID)
 		if err != nil {
 			ErrorResponse(w, http.StatusInternalServerError, "Erro ao listar sessões")
 			return
@@ -55,13 +60,20 @@ func (h *SessionHandler) HandleSessions(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
+		var techUserID *uuid.UUID
+		var techName string
+		if claims != nil {
+			techUserID = &claims.UserID
+			techName = claims.Name
+		}
+
 		session := &database.SessionLog{
 			ID:         uuid.New(),
-			TenantID:   claims.TenantID,
+			TenantID:   tenantID,
 			SessionID:  req.SessionID,
 			AgentID:    req.AgentID,
-			TechUserID: &claims.UserID,
-			TechName:   claims.Name,
+			TechUserID: techUserID,
+			TechName:   techName,
 			Status:     "ACTIVE",
 			StartedAt:  time.Now().UTC(),
 		}
@@ -72,12 +84,16 @@ func (h *SessionHandler) HandleSessions(w http.ResponseWriter, r *http.Request) 
 		}
 
 		// Registra evento de auditoria
-		lastEvt, _ := h.store.GetLastAuditEvent(r.Context(), claims.TenantID)
-		auditEvt, err := h.auditMgr.CreateAuditEvent(claims.TenantID, lastEvt, "SESSION_STARTED", map[string]interface{}{
+		lastEvt, _ := h.store.GetLastAuditEvent(r.Context(), tenantID)
+		techIDStr := ""
+		if techUserID != nil {
+			techIDStr = techUserID.String()
+		}
+		auditEvt, err := h.auditMgr.CreateAuditEvent(tenantID, lastEvt, "SESSION_STARTED", map[string]interface{}{
 			"session_id": req.SessionID,
 			"agent_id":   req.AgentID,
-			"tech_id":    claims.UserID.String(),
-			"tech_name":  claims.Name,
+			"tech_id":    techIDStr,
+			"tech_name":  techName,
 		}, time.Now().UTC())
 		if err == nil {
 			_ = h.store.AppendAuditEvent(r.Context(), auditEvt)
@@ -92,12 +108,11 @@ func (h *SessionHandler) HandleSessions(w http.ResponseWriter, r *http.Request) 
 
 // HandleSessionOperations lida com /api/v1/sessions/:id/*
 func (h *SessionHandler) HandleSessionOperations(w http.ResponseWriter, r *http.Request) {
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
 
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/sessions/")
 	parts := strings.Split(path, "/")
@@ -123,14 +138,14 @@ func (h *SessionHandler) HandleSessionOperations(w http.ResponseWriter, r *http.
 			req.Status = "CLOSED"
 		}
 
-		if err := h.store.CloseSession(r.Context(), claims.TenantID, sessionID, req.Status, req.DurationSeconds); err != nil {
+		if err := h.store.CloseSession(r.Context(), tenantID, sessionID, req.Status, req.DurationSeconds); err != nil {
 			ErrorResponse(w, http.StatusInternalServerError, "Falha ao encerrar sessão")
 			return
 		}
 
 		// Registra auditoria
-		lastEvt, _ := h.store.GetLastAuditEvent(r.Context(), claims.TenantID)
-		auditEvt, err := h.auditMgr.CreateAuditEvent(claims.TenantID, lastEvt, "SESSION_ENDED", map[string]interface{}{
+		lastEvt, _ := h.store.GetLastAuditEvent(r.Context(), tenantID)
+		auditEvt, err := h.auditMgr.CreateAuditEvent(tenantID, lastEvt, "SESSION_ENDED", map[string]interface{}{
 			"session_id":       sessionID,
 			"status":           req.Status,
 			"duration_seconds": req.DurationSeconds,
@@ -147,7 +162,7 @@ func (h *SessionHandler) HandleSessionOperations(w http.ResponseWriter, r *http.
 	if len(parts) >= 2 && parts[1] == "transfers" {
 		switch r.Method {
 		case http.MethodGet:
-			transfers, err := h.store.ListFileTransfers(r.Context(), claims.TenantID, sessionID)
+			transfers, err := h.store.ListFileTransfers(r.Context(), tenantID, sessionID)
 			if err != nil {
 				ErrorResponse(w, http.StatusInternalServerError, "Erro ao buscar transferências")
 				return
@@ -172,7 +187,7 @@ func (h *SessionHandler) HandleSessionOperations(w http.ResponseWriter, r *http.
 
 			ft := &database.FileTransfer{
 				ID:         uuid.New(),
-				TenantID:   claims.TenantID,
+				TenantID:   tenantID,
 				SessionID:  sessionID,
 				Filename:   req.Filename,
 				FileSize:   req.FileSize,
@@ -187,8 +202,8 @@ func (h *SessionHandler) HandleSessionOperations(w http.ResponseWriter, r *http.
 			}
 
 			// Auditoria Forense do Arquivo
-			lastEvt, _ := h.store.GetLastAuditEvent(r.Context(), claims.TenantID)
-			auditEvt, err := h.auditMgr.CreateAuditEvent(claims.TenantID, lastEvt, "FILE_TRANSFER", map[string]interface{}{
+			lastEvt, _ := h.store.GetLastAuditEvent(r.Context(), tenantID)
+			auditEvt, err := h.auditMgr.CreateAuditEvent(tenantID, lastEvt, "FILE_TRANSFER", map[string]interface{}{
 				"session_id":  sessionID,
 				"filename":    req.Filename,
 				"file_size":   req.FileSize,

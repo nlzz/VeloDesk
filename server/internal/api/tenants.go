@@ -125,16 +125,15 @@ func (h *TenantHandler) HandleSuperAdminTenants(w http.ResponseWriter, r *http.R
 
 // HandleTenantUsers gerencia usuários dentro de um Tenant
 func (h *TenantHandler) HandleTenantUsers(w http.ResponseWriter, r *http.Request) {
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
 
 	switch r.Method {
 	case http.MethodGet:
-		users, err := h.store.ListUsers(r.Context(), claims.TenantID)
+		users, err := h.store.ListUsers(r.Context(), tenantID)
 		if err != nil {
 			ErrorResponse(w, http.StatusInternalServerError, "Erro ao listar usuários")
 			return
@@ -166,7 +165,7 @@ func (h *TenantHandler) HandleTenantUsers(w http.ResponseWriter, r *http.Request
 
 		user := &database.User{
 			ID:           uuid.New(),
-			TenantID:     claims.TenantID,
+			TenantID:     tenantID,
 			Name:         req.Name,
 			Email:        req.Email,
 			PasswordHash: passHash,

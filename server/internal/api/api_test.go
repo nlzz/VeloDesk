@@ -324,5 +324,55 @@ func TestSuperAdminAndAuthEndpoints(t *testing.T) {
 	if listUsersRR.Code != http.StatusOK {
 		t.Fatalf("GET /admin/users falhou: %d - %s", listUsersRR.Code, listUsersRR.Body.String())
 	}
-	_ = tenant
+
+	// 10. Super-Admin audita o tenant 'escritorio-alfa' via X-Tenant-Slug
+	superAuditTicketsReq := httptest.NewRequest(http.MethodGet, "/api/v1/tickets", nil)
+	superAuditTicketsReq.Header.Set("Authorization", "Bearer "+superToken)
+	superAuditTicketsReq.Header.Set("X-Tenant-Slug", tenant.Slug)
+	superAuditTicketsRR := httptest.NewRecorder()
+	mux.ServeHTTP(superAuditTicketsRR, superAuditTicketsReq)
+
+	if superAuditTicketsRR.Code != http.StatusOK {
+		t.Fatalf("SuperAdmin GET /api/v1/tickets com X-Tenant-Slug falhou: %d - %s", superAuditTicketsRR.Code, superAuditTicketsRR.Body.String())
+	}
+
+	// 11. Super-Admin cria grupo e tag no tenant 'escritorio-alfa'
+	newGroupBody, _ := json.Marshal(map[string]interface{}{
+		"name": "Servidores Alfa",
+	})
+	newGroupReq := httptest.NewRequest(http.MethodPost, "/api/v1/groups", bytes.NewReader(newGroupBody))
+	newGroupReq.Header.Set("Authorization", "Bearer "+superToken)
+	newGroupReq.Header.Set("X-Tenant-Slug", tenant.Slug)
+	newGroupReq.Header.Set("Content-Type", "application/json")
+	newGroupRR := httptest.NewRecorder()
+	mux.ServeHTTP(newGroupRR, newGroupReq)
+
+	if newGroupRR.Code != http.StatusCreated {
+		t.Fatalf("SuperAdmin POST /api/v1/groups falhou: %d - %s", newGroupRR.Code, newGroupRR.Body.String())
+	}
+
+	newTagBody, _ := json.Marshal(map[string]interface{}{
+		"name":      "VIP",
+		"color_hex": "#10B981",
+	})
+	newTagReq := httptest.NewRequest(http.MethodPost, "/api/v1/tags", bytes.NewReader(newTagBody))
+	newTagReq.Header.Set("Authorization", "Bearer "+superToken)
+	newTagReq.Header.Set("X-Tenant-Slug", tenant.Slug)
+	newTagReq.Header.Set("Content-Type", "application/json")
+	newTagRR := httptest.NewRecorder()
+	mux.ServeHTTP(newTagRR, newTagReq)
+
+	if newTagRR.Code != http.StatusCreated {
+		t.Fatalf("SuperAdmin POST /api/v1/tags falhou: %d - %s", newTagRR.Code, newTagRR.Body.String())
+	}
+
+	// 12. Super-Admin sem tenant especificado deve ser rejeitado em /api/v1/tickets com 401
+	superNoTenantTicketsReq := httptest.NewRequest(http.MethodGet, "/api/v1/tickets", nil)
+	superNoTenantTicketsReq.Header.Set("Authorization", "Bearer "+superToken)
+	superNoTenantTicketsRR := httptest.NewRecorder()
+	mux.ServeHTTP(superNoTenantTicketsRR, superNoTenantTicketsReq)
+
+	if superNoTenantTicketsRR.Code != http.StatusUnauthorized {
+		t.Fatalf("Esperava 401 Unauthorized para SuperAdmin sem tenant em /api/v1/tickets, obteve %d", superNoTenantTicketsRR.Code)
+	}
 }

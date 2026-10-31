@@ -49,6 +49,68 @@ func CORSMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// isSuperAdminRole verifica se o papel possui privilégios de SuperAdmin.
+func isSuperAdminRole(role string) bool {
+	return role == database.RoleSuperAdmin ||
+		role == database.RoleLegacySuperAdmin ||
+		role == "SUPERADMIN" ||
+		role == "SUPER_ADMIN"
+}
+
+// GetEffectiveTenantID determina o TenantID aplicável à requisição.
+// Para técnicos e administradores de um escritório, retorna o TenantID de suas claims JWT.
+// Para SuperAdmins (cujo TenantID é global/nulo), resolve o Tenant ativo através
+// do contexto carregado pelo TenantMiddleware (X-Tenant-Slug, X-Tenant-ID ou parâmetros da URL).
+// Em requisições de clientes públicos (abertura de ticket), utiliza o Tenant do contexto.
+func GetEffectiveTenantID(r *http.Request) uuid.UUID {
+	var claims *auth.JWTClaims
+	if claimsVal := r.Context().Value(ContextKeyClaims); claimsVal != nil {
+		if c, ok := claimsVal.(*auth.JWTClaims); ok {
+			claims = c
+		}
+	}
+
+	var contextTenantID uuid.UUID
+	if tenantVal := r.Context().Value(ContextKeyTenant); tenantVal != nil {
+		if t, ok := tenantVal.(*database.Tenant); ok && t != nil {
+			contextTenantID = t.ID
+		}
+	}
+
+	// 1. Se for SuperAdmin auditando um tenant específico
+	if claims != nil && isSuperAdminRole(claims.Role) {
+		if contextTenantID != uuid.Nil {
+			return contextTenantID
+		}
+		if tidStr := r.Header.Get("X-Tenant-ID"); tidStr != "" {
+			if parsed, err := uuid.Parse(tidStr); err == nil && parsed != uuid.Nil {
+				return parsed
+			}
+		}
+		if tidStr := r.URL.Query().Get("tenant_id"); tidStr != "" {
+			if parsed, err := uuid.Parse(tidStr); err == nil && parsed != uuid.Nil {
+				return parsed
+			}
+		}
+		if claims.TenantID != uuid.Nil {
+			return claims.TenantID
+		}
+		return uuid.Nil
+	}
+
+	// 2. Se for usuário autenticado comum com TenantID associado
+	if claims != nil && claims.TenantID != uuid.Nil {
+		return claims.TenantID
+	}
+
+	// 3. Se for requisição com Tenant no contexto (ex: rotas de tickets ou públicas)
+	if contextTenantID != uuid.Nil {
+		return contextTenantID
+	}
+
+	return uuid.Nil
+}
+
 // TenantMiddleware extrai o tenant a partir do slug ou cabeçalho.
 func TenantMiddleware(store database.Store) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -58,6 +120,16 @@ func TenantMiddleware(store database.Store) func(http.Handler) http.Handler {
 
 			slug := r.Header.Get("X-Tenant-Slug")
 			tenantIDStr := r.Header.Get("X-Tenant-ID")
+
+			if slug == "" {
+				slug = r.URL.Query().Get("tenant")
+				if slug == "" {
+					slug = r.URL.Query().Get("tenant_slug")
+				}
+			}
+			if tenantIDStr == "" {
+				tenantIDStr = r.URL.Query().Get("tenant_id")
+			}
 
 			if slug != "" {
 				tenant, err = store.GetTenantBySlug(r.Context(), slug)
@@ -97,7 +169,7 @@ func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 			// Se houver tenant no contexto da requisição, assegura que coincide
 			if tenantVal := r.Context().Value(ContextKeyTenant); tenantVal != nil {
 				tenant := tenantVal.(*database.Tenant)
-				if claims.Role != database.RoleSuperAdmin && claims.TenantID != tenant.ID {
+				if !isSuperAdminRole(claims.Role) && claims.TenantID != tenant.ID {
 					ErrorResponse(w, http.StatusForbidden, "Acesso negado para este Tenant")
 					return
 				}

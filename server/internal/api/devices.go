@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"velodesk-server/internal/auth"
 	"velodesk-server/internal/database"
 )
 
@@ -20,16 +19,15 @@ func NewDeviceHandler(store database.Store) *DeviceHandler {
 
 // HandleDevices lida com a listagem e registro de dispositivos
 func (h *DeviceHandler) HandleDevices(w http.ResponseWriter, r *http.Request) {
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
 
 	switch r.Method {
 	case http.MethodGet:
-		devices, err := h.store.ListDevices(r.Context(), claims.TenantID)
+		devices, err := h.store.ListDevices(r.Context(), tenantID)
 		if err != nil {
 			ErrorResponse(w, http.StatusInternalServerError, "Erro ao listar dispositivos")
 			return
@@ -58,7 +56,7 @@ func (h *DeviceHandler) HandleDevices(w http.ResponseWriter, r *http.Request) {
 		}
 
 		device := &database.Device{
-			TenantID: claims.TenantID,
+			TenantID: tenantID,
 			AgentID:  req.AgentID,
 			Hostname: req.Hostname,
 			OSInfo:   req.OSInfo,
@@ -80,16 +78,15 @@ func (h *DeviceHandler) HandleDevices(w http.ResponseWriter, r *http.Request) {
 
 // HandleGroups gerencia os grupos hierárquicos do tenant
 func (h *DeviceHandler) HandleGroups(w http.ResponseWriter, r *http.Request) {
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
 
 	switch r.Method {
 	case http.MethodGet:
-		groups, err := h.store.ListDeviceGroups(r.Context(), claims.TenantID)
+		groups, err := h.store.ListDeviceGroups(r.Context(), tenantID)
 		if err != nil {
 			ErrorResponse(w, http.StatusInternalServerError, "Erro ao buscar grupos")
 			return
@@ -114,7 +111,7 @@ func (h *DeviceHandler) HandleGroups(w http.ResponseWriter, r *http.Request) {
 		}
 
 		group := &database.DeviceGroup{
-			TenantID: claims.TenantID,
+			TenantID: tenantID,
 			Name:     req.Name,
 			ParentID: req.ParentID,
 		}
@@ -132,16 +129,15 @@ func (h *DeviceHandler) HandleGroups(w http.ResponseWriter, r *http.Request) {
 
 // HandleTags gerencia etiquetas coloridas (#EF4444, #10B981)
 func (h *DeviceHandler) HandleTags(w http.ResponseWriter, r *http.Request) {
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
 
 	switch r.Method {
 	case http.MethodGet:
-		tags, err := h.store.ListTags(r.Context(), claims.TenantID)
+		tags, err := h.store.ListTags(r.Context(), tenantID)
 		if err != nil {
 			ErrorResponse(w, http.StatusInternalServerError, "Erro ao listar tags")
 			return
@@ -169,7 +165,7 @@ func (h *DeviceHandler) HandleTags(w http.ResponseWriter, r *http.Request) {
 		}
 
 		tag := &database.Tag{
-			TenantID: claims.TenantID,
+			TenantID: tenantID,
 			Name:     req.Name,
 			ColorHex: req.ColorHex,
 		}
@@ -192,12 +188,11 @@ func (h *DeviceHandler) HandleDeviceTagAssign(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
 
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/devices/")
 	parts := strings.Split(path, "/")
@@ -220,7 +215,7 @@ func (h *DeviceHandler) HandleDeviceTagAssign(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := h.store.AssignDeviceTag(r.Context(), claims.TenantID, deviceID, req.TagID); err != nil {
+	if err := h.store.AssignDeviceTag(r.Context(), tenantID, deviceID, req.TagID); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Falha ao associar tag")
 		return
 	}

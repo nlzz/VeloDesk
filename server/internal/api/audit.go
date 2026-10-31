@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	"velodesk-server/internal/audit"
-	"velodesk-server/internal/auth"
 	"velodesk-server/internal/database"
 )
 
@@ -27,14 +27,13 @@ func (h *AuditHandler) HandleAuditEvents(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
 
-	events, err := h.store.ListAuditEvents(r.Context(), claims.TenantID)
+	events, err := h.store.ListAuditEvents(r.Context(), tenantID)
 	if err != nil {
 		ErrorResponse(w, http.StatusInternalServerError, "Erro ao buscar trilha de auditoria")
 		return
@@ -53,14 +52,13 @@ func (h *AuditHandler) HandleAuditVerify(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	claimsVal := r.Context().Value(ContextKeyClaims)
-	if claimsVal == nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+	tenantID := GetEffectiveTenantID(r)
+	if tenantID == uuid.Nil {
+		ErrorResponse(w, http.StatusBadRequest, "Tenant não identificado")
 		return
 	}
-	claims := claimsVal.(*auth.JWTClaims)
 
-	events, err := h.store.ListAuditEvents(r.Context(), claims.TenantID)
+	events, err := h.store.ListAuditEvents(r.Context(), tenantID)
 	if err != nil {
 		ErrorResponse(w, http.StatusInternalServerError, "Erro ao buscar eventos")
 		return
