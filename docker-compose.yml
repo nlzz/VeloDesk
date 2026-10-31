@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: velodesk-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-velodesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-velodesk_secure_db_pass_change_in_prod}
+      POSTGRES_DB: ${POSTGRES_DB:-velodesk}
+    ports:
+      - "5432:5432"
+    volumes:
+      - velodesk_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-velodesk} -d ${POSTGRES_DB:-velodesk}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  coturn:
+    image: coturn/coturn:latest
+    container_name: velodesk-coturn
+    restart: always
+    network_mode: "host"
+    volumes:
+      - ./infra/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    environment:
+      - DETECT_EXTERNAL_IP=yes
+
+  signaling:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: velodesk-signaling
+    restart: always
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+      - DATABASE_URL=${DATABASE_URL:-postgres://velodesk:velodesk_secure_db_pass_change_in_prod@postgres:5432/velodesk?sslmode=disable}
+      - JWT_SECRET=${JWT_SECRET:-velodesk_enterprise_jwt_super_secret_key_32_bytes}
+      - AUDIT_MASTER_KEY=${AUDIT_MASTER_KEY:-velodesk_forensic_audit_hmac_master_secret_2026}
+      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD:-VelodeskSuperAdmin2026!}
+      - TURN_SECRET=${TURN_SECRET:-velodesk_super_secret_turn_key_change_in_production}
+      - TURN_REALM=${TURN_REALM:-turn.velodesk.staycloud.com}
+      - STUN_URL=${STUN_URL:-stun:127.0.0.1:3478}
+      - TURN_URL=${TURN_URL:-turn:127.0.0.1:3478}
+      - TURN_TTL_SECONDS=${TURN_TTL_SECONDS:-86400}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  velodesk_pgdata:
