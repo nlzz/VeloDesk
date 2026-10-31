@@ -242,6 +242,7 @@ export const SuperAdminDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  setFormError(null);
                   setActiveTab('tenants');
                   setSearchTerm('');
                 }}
@@ -258,6 +259,7 @@ export const SuperAdminDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
+                  setFormError(null);
                   setActiveTab('users');
                   setSearchTerm('');
                 }}
@@ -438,7 +440,23 @@ export const SuperAdminDashboard: React.FC = () => {
                             <div className="flex items-center justify-end gap-2">
                               <button
                                 type="button"
-                                onClick={() => setEditingTenant({ ...t })}
+                                onClick={() => {
+                                  api.setTenant(t);
+                                  navigate('/dashboard');
+                                }}
+                                className="px-2.5 py-1 text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition flex items-center gap-1.5 shadow-sm"
+                                title={`Acessar Dashboard do Escritório ${t.name}`}
+                              >
+                                <Monitor className="w-3.5 h-3.5" />
+                                <span>Acessar</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormError(null);
+                                  setEditingTenant({ ...t });
+                                }}
                                 className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition"
                                 title="Editar Dados"
                               >
@@ -558,7 +576,10 @@ export const SuperAdminDashboard: React.FC = () => {
               </h2>
               <button
                 type="button"
-                onClick={() => setIsNewTenantOpen(false)}
+                onClick={() => {
+                  setFormError(null);
+                  setIsNewTenantOpen(false);
+                }}
                 className="text-slate-500 hover:text-slate-300 text-sm"
               >
                 ✕
@@ -571,12 +592,15 @@ export const SuperAdminDashboard: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleCreateTenant} className="space-y-4 text-xs">
+            <form onSubmit={handleCreateTenant} autoComplete="off" className="space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-300 mb-1">Nome da Empresa *</label>
                 <input
                   type="text"
                   required
+                  id="new-tenant-name"
+                  name="velodesk_new_tenant_name"
+                  autoComplete="off"
                   value={tenantForm.name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="ex: Advocacia Silveira & Associados"
@@ -589,6 +613,9 @@ export const SuperAdminDashboard: React.FC = () => {
                 <input
                   type="text"
                   required
+                  id="new-tenant-slug"
+                  name="velodesk_new_tenant_slug"
+                  autoComplete="off"
                   value={tenantForm.slug}
                   onChange={(e) => setTenantForm({ ...tenantForm, slug: e.target.value.toLowerCase() })}
                   placeholder="ex: advocacia-silveira"
@@ -633,6 +660,9 @@ export const SuperAdminDashboard: React.FC = () => {
                 <label className="block font-semibold text-slate-300 mb-1">URL do Logo (Opcional)</label>
                 <input
                   type="url"
+                  id="new-tenant-logo-url"
+                  name="velodesk_new_tenant_logo_url"
+                  autoComplete="off"
                   value={tenantForm.logo_url}
                   onChange={(e) => setTenantForm({ ...tenantForm, logo_url: e.target.value })}
                   placeholder="https://exemplo.com/logo.png"
@@ -646,6 +676,8 @@ export const SuperAdminDashboard: React.FC = () => {
                   type="number"
                   min="1"
                   max="10000"
+                  id="new-tenant-max-devices"
+                  name="velodesk_new_tenant_max_devices"
                   value={tenantForm.max_devices}
                   onChange={(e) => setTenantForm({ ...tenantForm, max_devices: parseInt(e.target.value) || 50 })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500"
@@ -662,6 +694,9 @@ export const SuperAdminDashboard: React.FC = () => {
                     <label className="block text-slate-400 mb-0.5">Nome do Admin</label>
                     <input
                       type="text"
+                      id="create-tenant-admin-name"
+                      name="velodesk_tenant_admin_name"
+                      autoComplete="off"
                       value={tenantForm.admin_name}
                       onChange={(e) => setTenantForm({ ...tenantForm, admin_name: e.target.value })}
                       placeholder="Gestor de TI"
@@ -672,6 +707,10 @@ export const SuperAdminDashboard: React.FC = () => {
                     <label className="block text-slate-400 mb-0.5">E-mail do Admin</label>
                     <input
                       type="email"
+                      id="create-tenant-admin-email"
+                      name="velodesk_tenant_admin_email"
+                      autoComplete="off"
+                      data-lpignore="true"
                       value={tenantForm.admin_email}
                       onChange={(e) => setTenantForm({ ...tenantForm, admin_email: e.target.value })}
                       placeholder="admin@empresa.com"
@@ -683,6 +722,10 @@ export const SuperAdminDashboard: React.FC = () => {
                   <label className="block text-slate-400 mb-0.5">Senha Provisória</label>
                   <input
                     type="password"
+                    id="create-tenant-admin-password"
+                    name="velodesk_tenant_admin_password"
+                    autoComplete="new-password"
+                    data-lpignore="true"
                     value={tenantForm.admin_password}
                     onChange={(e) => setTenantForm({ ...tenantForm, admin_password: e.target.value })}
                     placeholder="••••••••••••"
@@ -694,7 +737,10 @@ export const SuperAdminDashboard: React.FC = () => {
               <div className="pt-3 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsNewTenantOpen(false)}
+                  onClick={() => {
+                    setFormError(null);
+                    setIsNewTenantOpen(false);
+                  }}
                   className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
                 >
                   Cancelar
@@ -725,7 +771,10 @@ export const SuperAdminDashboard: React.FC = () => {
               </h2>
               <button
                 type="button"
-                onClick={() => setEditingTenant(null)}
+                onClick={() => {
+                  setFormError(null);
+                  setEditingTenant(null);
+                }}
                 className="text-slate-500 hover:text-slate-300 text-sm"
               >
                 ✕
@@ -738,12 +787,14 @@ export const SuperAdminDashboard: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleUpdateTenant} className="space-y-4 text-xs">
+            <form onSubmit={handleUpdateTenant} autoComplete="off" className="space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-300 mb-1">Nome da Empresa</label>
                 <input
                   type="text"
                   required
+                  id="edit-tenant-name"
+                  name="velodesk_edit_tenant_name"
                   value={editingTenant.name}
                   onChange={(e) => setEditingTenant({ ...editingTenant, name: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100"
@@ -755,6 +806,8 @@ export const SuperAdminDashboard: React.FC = () => {
                 <input
                   type="text"
                   required
+                  id="edit-tenant-slug"
+                  name="velodesk_edit_tenant_slug"
                   value={editingTenant.slug}
                   onChange={(e) => setEditingTenant({ ...editingTenant, slug: e.target.value.toLowerCase() })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono"
@@ -794,6 +847,8 @@ export const SuperAdminDashboard: React.FC = () => {
                 <label className="block font-semibold text-slate-300 mb-1">URL do Logo</label>
                 <input
                   type="url"
+                  id="edit-tenant-logo-url"
+                  name="velodesk_edit_tenant_logo_url"
                   value={editingTenant.logo_url || ''}
                   onChange={(e) => setEditingTenant({ ...editingTenant, logo_url: e.target.value })}
                   placeholder="https://exemplo.com/logo.png"
@@ -807,6 +862,8 @@ export const SuperAdminDashboard: React.FC = () => {
                   <input
                     type="number"
                     min="1"
+                    id="edit-tenant-max-devices"
+                    name="velodesk_edit_tenant_max_devices"
                     value={editingTenant.max_devices}
                     onChange={(e) =>
                       setEditingTenant({ ...editingTenant, max_devices: parseInt(e.target.value) || 50 })
@@ -817,6 +874,8 @@ export const SuperAdminDashboard: React.FC = () => {
                 <div>
                   <label className="block font-semibold text-slate-300 mb-1">Status</label>
                   <select
+                    id="edit-tenant-status"
+                    name="velodesk_edit_tenant_status"
                     value={editingTenant.status || 'ACTIVE'}
                     onChange={(e) => setEditingTenant({ ...editingTenant, status: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100"
@@ -830,7 +889,10 @@ export const SuperAdminDashboard: React.FC = () => {
               <div className="pt-3 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setEditingTenant(null)}
+                  onClick={() => {
+                    setFormError(null);
+                    setEditingTenant(null);
+                  }}
                   className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
                 >
                   Cancelar
@@ -861,7 +923,10 @@ export const SuperAdminDashboard: React.FC = () => {
               </h2>
               <button
                 type="button"
-                onClick={() => setIsNewUserOpen(false)}
+                onClick={() => {
+                  setFormError(null);
+                  setIsNewUserOpen(false);
+                }}
                 className="text-slate-500 hover:text-slate-300 text-sm"
               >
                 ✕
@@ -874,10 +939,12 @@ export const SuperAdminDashboard: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleCreateUser} className="space-y-4 text-xs">
+            <form onSubmit={handleCreateUser} autoComplete="off" className="space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-300 mb-1">Empresa Vinculada</label>
                 <select
+                  id="new-user-tenant"
+                  name="velodesk_user_tenant"
                   value={userForm.tenant_id}
                   onChange={(e) => setUserForm({ ...userForm, tenant_id: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100"
@@ -896,6 +963,9 @@ export const SuperAdminDashboard: React.FC = () => {
                 <input
                   type="text"
                   required
+                  id="create-user-fullname"
+                  name="velodesk_user_fullname"
+                  autoComplete="off"
                   value={userForm.name}
                   onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
                   placeholder="ex: João Silva"
@@ -908,6 +978,10 @@ export const SuperAdminDashboard: React.FC = () => {
                 <input
                   type="email"
                   required
+                  id="create-user-email"
+                  name="velodesk_user_account_email"
+                  autoComplete="off"
+                  data-lpignore="true"
                   value={userForm.email}
                   onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
                   placeholder="ex: joao@empresa.com"
@@ -920,6 +994,10 @@ export const SuperAdminDashboard: React.FC = () => {
                 <input
                   type="password"
                   required
+                  id="create-user-password"
+                  name="velodesk_user_account_password"
+                  autoComplete="new-password"
+                  data-lpignore="true"
                   value={userForm.password}
                   onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
                   placeholder="••••••••••••"
@@ -930,6 +1008,8 @@ export const SuperAdminDashboard: React.FC = () => {
               <div>
                 <label className="block font-semibold text-slate-300 mb-1">Papel / Nível de Acesso (Role) *</label>
                 <select
+                  id="new-user-role"
+                  name="velodesk_user_role"
                   value={userForm.role}
                   onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100"
@@ -943,7 +1023,10 @@ export const SuperAdminDashboard: React.FC = () => {
               <div className="pt-3 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsNewUserOpen(false)}
+                  onClick={() => {
+                    setFormError(null);
+                    setIsNewUserOpen(false);
+                  }}
                   className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
                 >
                   Cancelar
