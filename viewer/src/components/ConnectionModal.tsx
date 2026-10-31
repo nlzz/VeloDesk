@@ -92,7 +92,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                VeloDesk <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-400 font-mono">v0.3.0</span>
+                VeloDesk <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-400 font-mono">v2.0 Enterprise</span>
               </h1>
               <p className="text-xs text-slate-400">Controle Remoto de Ultra-Baixa Latência</p>
             </div>
@@ -223,6 +223,15 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
               </>
             )}
           </button>
+          {/* Link para Hub Enterprise / Multi-Tenant */}
+          <div className="pt-2 text-center">
+            <a
+              href="/t/default"
+              className="text-xs text-brand-400 hover:text-brand-300 underline underline-offset-4 transition-colors"
+            >
+              🏢 Acessar Painel Enterprise & Helpdesk (/t/:slug)
+            </a>
+          </div>
         </form>
 
         {/* Rodapé Informativo */}
