@@ -8,11 +8,27 @@ import (
 
 // Role constants for RBAC
 const (
-	RoleSuperAdmin     = "SUPER_ADMIN"
-	RoleAdmin          = "ADMIN"
-	RoleTechUnattended = "TECH_UNATTENDED"
-	RoleTechAttended   = "TECH_ATTENDED"
-	RoleAuditor        = "AUDITOR"
+	RoleSuperAdmin = "SUPERADMIN"
+	RoleAdmin      = "ADMIN"
+	RoleTechnician = "TECHNICIAN"
+
+	// Legacy aliases
+	RoleLegacySuperAdmin     = "SUPER_ADMIN"
+	RoleTechUnattended       = "TECH_UNATTENDED"
+	RoleTechAttended         = "TECH_ATTENDED"
+	RoleAuditor              = "AUDITOR"
+	RoleLegacyTechUnattended = "TECH_UNATTENDED"
+	RoleLegacyTechAttended   = "TECH_ATTENDED"
+	RoleLegacyAuditor        = "AUDITOR"
+)
+
+// Tenant and User status constants
+const (
+	TenantStatusActive  = "ACTIVE"
+	TenantStatusBlocked = "BLOCKED"
+
+	UserStatusActive  = "ACTIVE"
+	UserStatusBlocked = "BLOCKED"
 )
 
 // Ticket status constants
@@ -36,8 +52,10 @@ type Tenant struct {
 	LogoURL      string    `json:"logo_url"`
 	PrimaryColor string    `json:"primary_color"`
 	MaxDevices   int       `json:"max_devices"`
+	Status       string    `json:"status"` // ACTIVE, BLOCKED
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	DeviceCount  int       `json:"device_count,omitempty"`
 }
 
 // User representa um operador, técnico ou administrador vinculado a um Tenant.
@@ -48,6 +66,7 @@ type User struct {
 	Email        string    `json:"email"`
 	PasswordHash string    `json:"-"`
 	Role         string    `json:"role"`
+	Status       string    `json:"status,omitempty"` // ACTIVE, BLOCKED
 	MFASecret    string    `json:"-"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

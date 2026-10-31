@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"velodesk-server/internal/audit"
 	"velodesk-server/internal/auth"
 	"velodesk-server/internal/config"
@@ -187,4 +188,141 @@ func TestAPITicketsAndAuditTrail(t *testing.T) {
 	if verified, ok := verifyResp["verified"].(bool); !ok || !verified {
 		t.Fatalf("A integridade da trilha de auditoria falhou: %+v", verifyResp)
 	}
+}
+
+func TestSuperAdminAndAuthEndpoints(t *testing.T) {
+	mux, store, cfg, tenant, user := setupTestServer(t)
+
+	// 1. Testa Login Global (apenas e-mail + senha com Argon2id, sem slug)
+	loginBody, _ := json.Marshal(map[string]string{
+		"email":    user.Email,
+		"password": "SenhaForte2026!",
+	})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRR := httptest.NewRecorder()
+	mux.ServeHTTP(loginRR, loginReq)
+
+	if loginRR.Code != http.StatusOK {
+		t.Fatalf("Login global falhou: %d - %s", loginRR.Code, loginRR.Body.String())
+	}
+
+	var loginResp map[string]interface{}
+	if err := json.Unmarshal(loginRR.Body.Bytes(), &loginResp); err != nil {
+		t.Fatalf("Erro ao decodificar JSON do login: %v", err)
+	}
+	techToken := loginResp["token"].(string)
+
+	// 2. Testa GET /api/v1/auth/me autenticado
+	meReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+techToken)
+	meRR := httptest.NewRecorder()
+	mux.ServeHTTP(meRR, meReq)
+
+	if meRR.Code != http.StatusOK {
+		t.Fatalf("GET /auth/me falhou: %d - %s", meRR.Code, meRR.Body.String())
+	}
+
+	// 3. Verifica que técnico comum recebe 403 ao tentar acessar /api/v1/admin/tenants
+	adminTenantsReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/tenants", nil)
+	adminTenantsReq.Header.Set("Authorization", "Bearer "+techToken)
+	adminTenantsRR := httptest.NewRecorder()
+	mux.ServeHTTP(adminTenantsRR, adminTenantsReq)
+
+	if adminTenantsRR.Code != http.StatusForbidden {
+		t.Fatalf("Esperava 403 Forbidden para técnico acessando /admin/tenants, obteve %d", adminTenantsRR.Code)
+	}
+
+	// 4. Cria Super-Admin e gera token
+	superAdminPassHash, _ := auth.HashPassword("SuperSecret2026!", auth.DefaultArgon2Params)
+	superAdmin := &database.User{
+		TenantID:     uuid.Nil,
+		Name:         "Master Admin",
+		Email:        "super@velodesk.test",
+		PasswordHash: superAdminPassHash,
+		Role:         database.RoleSuperAdmin,
+		Status:       database.UserStatusActive,
+	}
+	_ = store.CreateUser(context.Background(), superAdmin)
+
+	superToken, err := auth.GenerateToken(cfg.JWTSecret, uuid.Nil, superAdmin.ID, superAdmin.Name, superAdmin.Email, superAdmin.Role, time.Hour)
+	if err != nil {
+		t.Fatalf("Erro ao gerar token de super-admin: %v", err)
+	}
+
+	// 5. Super-Admin lista empresas GET /api/v1/admin/tenants
+	superListReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/tenants", nil)
+	superListReq.Header.Set("Authorization", "Bearer "+superToken)
+	superListRR := httptest.NewRecorder()
+	mux.ServeHTTP(superListRR, superListReq)
+
+	if superListRR.Code != http.StatusOK {
+		t.Fatalf("SuperAdmin GET /admin/tenants falhou: %d - %s", superListRR.Code, superListRR.Body.String())
+	}
+
+	// 6. Super-Admin cria nova empresa POST /api/v1/admin/tenants
+	newTenantBody, _ := json.Marshal(map[string]interface{}{
+		"name":          "Escritório Beta",
+		"slug":          "escritorio-beta",
+		"primary_color": "#8B5CF6",
+		"logo_url":      "https://example.com/beta.png",
+		"max_devices":   75,
+	})
+	newTenantReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/tenants", bytes.NewReader(newTenantBody))
+	newTenantReq.Header.Set("Authorization", "Bearer "+superToken)
+	newTenantReq.Header.Set("Content-Type", "application/json")
+	newTenantRR := httptest.NewRecorder()
+	mux.ServeHTTP(newTenantRR, newTenantReq)
+
+	if newTenantRR.Code != http.StatusCreated {
+		t.Fatalf("POST /admin/tenants falhou: %d - %s", newTenantRR.Code, newTenantRR.Body.String())
+	}
+
+	var createdTenant database.Tenant
+	_ = json.Unmarshal(newTenantRR.Body.Bytes(), &createdTenant)
+
+	// 7. Super-Admin edita a empresa PUT /api/v1/admin/tenants/:id
+	editBody, _ := json.Marshal(map[string]interface{}{
+		"name":        "Escritório Beta Renovado",
+		"max_devices": 120,
+		"status":      "ACTIVE",
+	})
+	editReq := httptest.NewRequest(http.MethodPut, "/api/v1/admin/tenants/"+createdTenant.ID.String(), bytes.NewReader(editBody))
+	editReq.Header.Set("Authorization", "Bearer "+superToken)
+	editReq.Header.Set("Content-Type", "application/json")
+	editRR := httptest.NewRecorder()
+	mux.ServeHTTP(editRR, editReq)
+
+	if editRR.Code != http.StatusOK {
+		t.Fatalf("PUT /admin/tenants/:id falhou: %d - %s", editRR.Code, editRR.Body.String())
+	}
+
+	// 8. Super-Admin cria novo usuário POST /api/v1/admin/users
+	newUserBody, _ := json.Marshal(map[string]interface{}{
+		"tenant_id": createdTenant.ID.String(),
+		"name":      "Novo Técnico Beta",
+		"email":     "tech@beta.com",
+		"password":  "SenhaBeta2026!",
+		"role":      "TECHNICIAN",
+	})
+	newUserReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewReader(newUserBody))
+	newUserReq.Header.Set("Authorization", "Bearer "+superToken)
+	newUserReq.Header.Set("Content-Type", "application/json")
+	newUserRR := httptest.NewRecorder()
+	mux.ServeHTTP(newUserRR, newUserReq)
+
+	if newUserRR.Code != http.StatusCreated {
+		t.Fatalf("POST /admin/users falhou: %d - %s", newUserRR.Code, newUserRR.Body.String())
+	}
+
+	// 9. Super-Admin lista todos os usuários GET /api/v1/admin/users
+	listUsersReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
+	listUsersReq.Header.Set("Authorization", "Bearer "+superToken)
+	listUsersRR := httptest.NewRecorder()
+	mux.ServeHTTP(listUsersRR, listUsersReq)
+
+	if listUsersRR.Code != http.StatusOK {
+		t.Fatalf("GET /admin/users falhou: %d - %s", listUsersRR.Code, listUsersRR.Body.String())
+	}
+	_ = tenant
 }

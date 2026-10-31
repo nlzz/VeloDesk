@@ -19,13 +19,19 @@ type Store interface {
 	CreateTenant(ctx context.Context, tenant *Tenant) error
 	GetTenantByID(ctx context.Context, id uuid.UUID) (*Tenant, error)
 	GetTenantBySlug(ctx context.Context, slug string) (*Tenant, error)
+	UpdateTenant(ctx context.Context, tenant *Tenant) error
 	ListTenants(ctx context.Context) ([]Tenant, error)
+	CountDevicesByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
 
-	// Users (isolados por tenant)
+	// Users (isolados por tenant e super-admins globais)
 	CreateUser(ctx context.Context, user *User) error
 	GetUserByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*User, error)
+	GetUserByEmailGlobal(ctx context.Context, email string) (*User, error)
 	GetUserByID(ctx context.Context, tenantID, userID uuid.UUID) (*User, error)
+	GetUserByIDGlobal(ctx context.Context, userID uuid.UUID) (*User, error)
 	ListUsers(ctx context.Context, tenantID uuid.UUID) ([]User, error)
+	ListAllUsers(ctx context.Context) ([]User, error)
+	CountUsers(ctx context.Context) (int, error)
 
 	// Device Groups & Tags
 	CreateDeviceGroup(ctx context.Context, group *DeviceGroup) error

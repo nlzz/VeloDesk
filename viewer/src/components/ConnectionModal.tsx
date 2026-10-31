@@ -38,7 +38,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
     if (isBrowser) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host || 'localhost:8080';
-      setServerUrl(`${protocol}//${host}/ws`);
+      const token = localStorage.getItem('velodesk_token');
+      const wsUrl = token
+        ? `${protocol}//${host}/ws?token=${encodeURIComponent(token)}`
+        : `${protocol}//${host}/ws`;
+      setServerUrl(wsUrl);
 
       // Carrega histórico local
       try {

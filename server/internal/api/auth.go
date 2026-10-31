@@ -49,20 +49,41 @@ func (h *AuthHandler) HandleTenantLogin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if req.Slug == "" || req.Email == "" || req.Password == "" {
-		ErrorResponse(w, http.StatusBadRequest, "Slug, e-mail e senha são obrigatórios")
+	if req.Email == "" || req.Password == "" {
+		ErrorResponse(w, http.StatusBadRequest, "E-mail e senha são obrigatórios")
 		return
 	}
 
-	tenant, err := h.store.GetTenantBySlug(r.Context(), req.Slug)
-	if err != nil {
+	var user *database.User
+	var tenant *database.Tenant
+	var err error
+
+	if req.Slug != "" {
+		tenant, err = h.store.GetTenantBySlug(r.Context(), req.Slug)
+		if err != nil {
+			ErrorResponse(w, http.StatusUnauthorized, "Tenant ou credenciais inválidas")
+			return
+		}
+		user, err = h.store.GetUserByEmail(r.Context(), tenant.ID, req.Email)
+	} else {
+		user, err = h.store.GetUserByEmailGlobal(r.Context(), req.Email)
+		if err == nil && user.TenantID != uuid.Nil {
+			tenant, _ = h.store.GetTenantByID(r.Context(), user.TenantID)
+		}
+	}
+
+	if err != nil || user == nil {
 		ErrorResponse(w, http.StatusUnauthorized, "Tenant ou credenciais inválidas")
 		return
 	}
 
-	user, err := h.store.GetUserByEmail(r.Context(), tenant.ID, req.Email)
-	if err != nil {
-		ErrorResponse(w, http.StatusUnauthorized, "Tenant ou credenciais inválidas")
+	if user.Status == database.UserStatusBlocked {
+		ErrorResponse(w, http.StatusForbidden, "Usuário bloqueado pelo administrador")
+		return
+	}
+
+	if tenant != nil && tenant.Status == database.TenantStatusBlocked {
+		ErrorResponse(w, http.StatusForbidden, "Empresa bloqueada pelo administrador")
 		return
 	}
 
@@ -72,40 +93,98 @@ func (h *AuthHandler) HandleTenantLogin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	token, err := auth.GenerateToken(h.cfg.JWTSecret, tenant.ID, user.ID, user.Name, user.Email, user.Role, 24*time.Hour)
+	token, err := auth.GenerateToken(h.cfg.JWTSecret, user.TenantID, user.ID, user.Name, user.Email, user.Role, 24*time.Hour)
 	if err != nil {
 		ErrorResponse(w, http.StatusInternalServerError, "Falha ao gerar sessão")
 		return
 	}
 
-	// Registra evento de login na auditoria
-	lastEvt, _ := h.store.GetLastAuditEvent(r.Context(), tenant.ID)
-	auditEvt, err := h.auditMgr.CreateAuditEvent(tenant.ID, lastEvt, "AUTH_LOGIN", map[string]interface{}{
-		"user_id": user.ID.String(),
-		"email":   user.Email,
-		"role":    user.Role,
-		"ip":      r.RemoteAddr,
-	}, time.Now().UTC())
-	if err == nil {
-		_ = h.store.AppendAuditEvent(r.Context(), auditEvt)
+	// Registra evento de login na auditoria se houver tenant
+	if tenant != nil {
+		lastEvt, _ := h.store.GetLastAuditEvent(r.Context(), tenant.ID)
+		auditEvt, err := h.auditMgr.CreateAuditEvent(tenant.ID, lastEvt, "AUTH_LOGIN", map[string]interface{}{
+			"user_id": user.ID.String(),
+			"email":   user.Email,
+			"role":    user.Role,
+			"ip":      r.RemoteAddr,
+		}, time.Now().UTC())
+		if err == nil {
+			_ = h.store.AppendAuditEvent(r.Context(), auditEvt)
+		}
 	}
 
-	JSONResponse(w, http.StatusOK, map[string]interface{}{
+	resp := map[string]interface{}{
 		"token": token,
 		"user": map[string]interface{}{
-			"id":    user.ID,
-			"name":  user.Name,
-			"email": user.Email,
-			"role":  user.Role,
+			"id":        user.ID,
+			"tenant_id": user.TenantID,
+			"name":      user.Name,
+			"email":     user.Email,
+			"role":      user.Role,
+			"status":    user.Status,
 		},
-		"tenant": map[string]interface{}{
+	}
+	if tenant != nil {
+		resp["tenant"] = map[string]interface{}{
 			"id":            tenant.ID,
 			"name":          tenant.Name,
 			"slug":          tenant.Slug,
 			"logo_url":      tenant.LogoURL,
 			"primary_color": tenant.PrimaryColor,
+			"status":        tenant.Status,
+			"max_devices":   tenant.MaxDevices,
+		}
+	}
+
+	JSONResponse(w, http.StatusOK, resp)
+}
+
+// HandleMe valida a sessão do token e retorna dados do usuário logado
+func (h *AuthHandler) HandleMe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		ErrorResponse(w, http.StatusMethodNotAllowed, "Método não permitido")
+		return
+	}
+
+	claimsVal := r.Context().Value(ContextKeyClaims)
+	if claimsVal == nil {
+		ErrorResponse(w, http.StatusUnauthorized, "Não autenticado")
+		return
+	}
+	claims := claimsVal.(*auth.JWTClaims)
+
+	user, err := h.store.GetUserByIDGlobal(r.Context(), claims.UserID)
+	if err != nil {
+		ErrorResponse(w, http.StatusNotFound, "Usuário não localizado")
+		return
+	}
+
+	resp := map[string]interface{}{
+		"user": map[string]interface{}{
+			"id":        user.ID,
+			"tenant_id": user.TenantID,
+			"name":      user.Name,
+			"email":     user.Email,
+			"role":      user.Role,
+			"status":    user.Status,
 		},
-	})
+	}
+
+	if user.TenantID != uuid.Nil {
+		if tenant, err := h.store.GetTenantByID(r.Context(), user.TenantID); err == nil {
+			resp["tenant"] = map[string]interface{}{
+				"id":            tenant.ID,
+				"name":          tenant.Name,
+				"slug":          tenant.Slug,
+				"logo_url":      tenant.LogoURL,
+				"primary_color": tenant.PrimaryColor,
+				"status":        tenant.Status,
+				"max_devices":   tenant.MaxDevices,
+			}
+		}
+	}
+
+	JSONResponse(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) HandleSuperAdminLogin(w http.ResponseWriter, r *http.Request) {

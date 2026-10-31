@@ -29,6 +29,7 @@ func SetupRouter(
 	auditMgr *audit.Manager,
 ) {
 	authHandler := NewAuthHandler(store, cfg, auditMgr)
+	adminHandler := NewAdminHandler(store, cfg)
 	tenantHandler := NewTenantHandler(store)
 	deviceHandler := NewDeviceHandler(store)
 	ticketHandler := NewTicketHandler(store, realtimeHub, auditMgr)
@@ -39,16 +40,23 @@ func SetupRouter(
 	tenantMiddleware := TenantMiddleware(store)
 	authMiddleware := AuthMiddleware(cfg.JWTSecret)
 	optionalAuth := OptionalAuthMiddleware(cfg.JWTSecret)
-	adminRole := RequireRoles(database.RoleAdmin, database.RoleSuperAdmin)
-	techRoles := RequireRoles(database.RoleAdmin, database.RoleTechUnattended, database.RoleTechAttended, database.RoleAuditor, database.RoleSuperAdmin)
+	adminRole := RequireRoles(database.RoleAdmin, database.RoleSuperAdmin, database.RoleLegacySuperAdmin)
+	techRoles := RequireRoles(database.RoleAdmin, database.RoleTechnician, database.RoleTechUnattended, database.RoleTechAttended, database.RoleAuditor, database.RoleSuperAdmin, database.RoleLegacySuperAdmin)
 
-	// 1. Rotas Públicas de Autenticação e Branding
+	// 1. Rotas de Autenticação e Branding
 	mux.HandleFunc("/api/v1/auth/login", authHandler.HandleTenantLogin)
+	mux.Handle("/api/v1/auth/me", authMiddleware(http.HandlerFunc(authHandler.HandleMe)))
 	mux.HandleFunc("/api/v1/super-admin/login", authHandler.HandleSuperAdminLogin)
 	mux.HandleFunc("/api/v1/tenants/", tenantHandler.HandleGetPublicTenant)
 
-	// 2. Rotas de Super Admin
-	mux.Handle("/api/v1/super-admin/tenants", authMiddleware(RequireRoles(database.RoleSuperAdmin)(http.HandlerFunc(tenantHandler.HandleSuperAdminTenants))))
+	// 2. Rotas do Painel Administrativo Master (Super-Admin)
+	superAdminRole := RequireRoles(database.RoleSuperAdmin, database.RoleLegacySuperAdmin)
+	mux.Handle("/api/v1/admin/tenants", authMiddleware(superAdminRole(http.HandlerFunc(adminHandler.HandleAdminTenants))))
+	mux.Handle("/api/v1/admin/tenants/", authMiddleware(superAdminRole(http.HandlerFunc(adminHandler.HandleAdminTenantByID))))
+	mux.Handle("/api/v1/admin/users", authMiddleware(adminRole(http.HandlerFunc(adminHandler.HandleAdminUsers))))
+
+	// Aliases legados para compatibilidade
+	mux.Handle("/api/v1/super-admin/tenants", authMiddleware(superAdminRole(http.HandlerFunc(adminHandler.HandleAdminTenants))))
 
 	// 3. Usuários do Tenant (Admin do Tenant ou Super Admin)
 	mux.Handle("/api/v1/tenants/users", tenantMiddleware(authMiddleware(adminRole(http.HandlerFunc(tenantHandler.HandleTenantUsers)))))

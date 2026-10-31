@@ -7,13 +7,20 @@ export interface TenantInfo {
   logo_url: string;
   primary_color: string;
   max_devices: number;
+  status?: string;
+  device_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface UserInfo {
   id: string;
+  tenant_id?: string;
   name: string;
   email: string;
   role: string;
+  status?: string;
+  created_at?: string;
 }
 
 export interface DeviceTag {
@@ -198,19 +205,79 @@ class ApiService {
   }
 
   // Auth
-  public async login(slug: string, email: string, password: string): Promise<{ token: string; user: UserInfo; tenant: TenantInfo }> {
-    const res = await this.request<{ token: string; user: UserInfo; tenant: TenantInfo }>('/api/v1/auth/login', {
+  public async login(email: string, password: string, slug?: string): Promise<{ token: string; user: UserInfo; tenant: TenantInfo | null }> {
+    const body: Record<string, string> = { email, password };
+    if (slug) body.slug = slug;
+    const res = await this.request<{ token: string; user: UserInfo; tenant: TenantInfo | null }>('/api/v1/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ slug, email, password }),
+      body: JSON.stringify(body),
     });
     this.setToken(res.token);
-    this.setTenant(res.tenant);
+    if (res.tenant) {
+      this.setTenant(res.tenant);
+    }
+    return res;
+  }
+
+  public async getMe(): Promise<{ user: UserInfo; tenant: TenantInfo | null }> {
+    const res = await this.request<{ user: UserInfo; tenant: TenantInfo | null }>('/api/v1/auth/me');
+    if (res.tenant) {
+      this.setTenant(res.tenant);
+    }
     return res;
   }
 
   public logout() {
     this.setToken(null);
     this.setTenant(null);
+  }
+
+  // SuperAdmin APIs
+  public async listAdminTenants(): Promise<TenantInfo[]> {
+    return this.request<TenantInfo[]>('/api/v1/admin/tenants');
+  }
+
+  public async createAdminTenant(data: {
+    name: string;
+    slug: string;
+    primary_color?: string;
+    logo_url?: string;
+    max_devices?: number;
+    status?: string;
+    admin_email?: string;
+    admin_name?: string;
+    admin_password?: string;
+  }): Promise<TenantInfo> {
+    return this.request<TenantInfo>('/api/v1/admin/tenants', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateAdminTenant(id: string, data: Partial<TenantInfo>): Promise<TenantInfo> {
+    return this.request<TenantInfo>(`/api/v1/admin/tenants/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async listAdminUsers(tenantId?: string): Promise<UserInfo[]> {
+    const query = tenantId ? `?tenant_id=${tenantId}` : '';
+    return this.request<UserInfo[]>(`/api/v1/admin/users${query}`);
+  }
+
+  public async createAdminUser(data: {
+    tenant_id?: string;
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    status?: string;
+  }): Promise<UserInfo> {
+    return this.request<UserInfo>('/api/v1/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   // Devices & Groups

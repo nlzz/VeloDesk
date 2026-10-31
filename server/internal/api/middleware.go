@@ -142,7 +142,7 @@ func RequireRoles(allowedRoles ...string) func(http.Handler) http.Handler {
 			}
 
 			claims := claimsVal.(*auth.JWTClaims)
-			if claims.Role == database.RoleSuperAdmin || roleMap[claims.Role] {
+			if claims.Role == database.RoleSuperAdmin || claims.Role == database.RoleLegacySuperAdmin || claims.Role == "SUPERADMIN" || claims.Role == "SUPER_ADMIN" || roleMap[claims.Role] {
 				next.ServeHTTP(w, r)
 				return
 			}

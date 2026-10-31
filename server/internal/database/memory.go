@@ -56,6 +56,9 @@ func (s *MemoryStore) CreateTenant(ctx context.Context, tenant *Tenant) error {
 	if tenant.ID == uuid.Nil {
 		tenant.ID = uuid.New()
 	}
+	if tenant.Status == "" {
+		tenant.Status = TenantStatusActive
+	}
 	now := time.Now().UTC()
 	tenant.CreatedAt = now
 	tenant.UpdatedAt = now
@@ -88,6 +91,39 @@ func (s *MemoryStore) GetTenantBySlug(ctx context.Context, slug string) (*Tenant
 	return nil, ErrNotFound
 }
 
+func (s *MemoryStore) UpdateTenant(ctx context.Context, tenant *Tenant) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, ok := s.tenants[tenant.ID]
+	if !ok {
+		return ErrNotFound
+	}
+
+	if tenant.Name != "" {
+		existing.Name = tenant.Name
+	}
+	if tenant.Slug != "" {
+		existing.Slug = tenant.Slug
+	}
+	if tenant.PrimaryColor != "" {
+		existing.PrimaryColor = tenant.PrimaryColor
+	}
+	if tenant.LogoURL != "" {
+		existing.LogoURL = tenant.LogoURL
+	}
+	if tenant.MaxDevices > 0 {
+		existing.MaxDevices = tenant.MaxDevices
+	}
+	if tenant.Status != "" {
+		existing.Status = tenant.Status
+	}
+	existing.UpdatedAt = time.Now().UTC()
+	s.tenants[tenant.ID] = existing
+	*tenant = existing
+	return nil
+}
+
 func (s *MemoryStore) ListTenants(ctx context.Context) ([]Tenant, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -96,7 +132,23 @@ func (s *MemoryStore) ListTenants(ctx context.Context) ([]Tenant, error) {
 	for _, t := range s.tenants {
 		res = append(res, t)
 	}
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].CreatedAt.After(res[j].CreatedAt)
+	})
 	return res, nil
+}
+
+func (s *MemoryStore) CountDevicesByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	count := 0
+	for _, d := range s.devices {
+		if d.TenantID == tenantID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // Users
@@ -105,13 +157,16 @@ func (s *MemoryStore) CreateUser(ctx context.Context, user *User) error {
 	defer s.mu.Unlock()
 
 	for _, u := range s.users {
-		if u.TenantID == user.TenantID && u.Email == user.Email {
+		if (u.TenantID == user.TenantID || u.TenantID == uuid.Nil || user.TenantID == uuid.Nil) && u.Email == user.Email {
 			return ErrAlreadyExists
 		}
 	}
 
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
+	}
+	if user.Status == "" {
+		user.Status = UserStatusActive
 	}
 	now := time.Now().UTC()
 	user.CreatedAt = now
@@ -133,12 +188,37 @@ func (s *MemoryStore) GetUserByEmail(ctx context.Context, tenantID uuid.UUID, em
 	return nil, ErrNotFound
 }
 
+func (s *MemoryStore) GetUserByEmailGlobal(ctx context.Context, email string) (*User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, u := range s.users {
+		if u.Email == email {
+			res := u
+			return &res, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
 func (s *MemoryStore) GetUserByID(ctx context.Context, tenantID, userID uuid.UUID) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	u, ok := s.users[userID]
-	if !ok || u.TenantID != tenantID {
+	if !ok || (tenantID != uuid.Nil && u.TenantID != tenantID) {
+		return nil, ErrNotFound
+	}
+	res := u
+	return &res, nil
+}
+
+func (s *MemoryStore) GetUserByIDGlobal(ctx context.Context, userID uuid.UUID) (*User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	u, ok := s.users[userID]
+	if !ok {
 		return nil, ErrNotFound
 	}
 	res := u
@@ -156,6 +236,27 @@ func (s *MemoryStore) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]User
 		}
 	}
 	return res, nil
+}
+
+func (s *MemoryStore) ListAllUsers(ctx context.Context) ([]User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	res := make([]User, 0, len(s.users))
+	for _, u := range s.users {
+		res = append(res, u)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].CreatedAt.After(res[j].CreatedAt)
+	})
+	return res, nil
+}
+
+func (s *MemoryStore) CountUsers(ctx context.Context) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return len(s.users), nil
 }
 
 // Device Groups & Tags

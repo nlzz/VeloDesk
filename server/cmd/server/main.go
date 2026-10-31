@@ -7,11 +7,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"velodesk-server/internal/api"
 	"velodesk-server/internal/audit"
+	"velodesk-server/internal/auth"
 	"velodesk-server/internal/config"
 	"velodesk-server/internal/database"
 	"velodesk-server/internal/handler"
@@ -43,6 +47,9 @@ func main() {
 		store = database.NewMemoryStore()
 	}
 
+	// 1.1. Seed Automático do Super-Admin Inicial
+	seedSuperAdmin(store)
+
 	// 2. Componentes de Auditoria Criptográfica e Hubs
 	auditMgr := audit.NewManager([]byte(cfg.AuditMasterKey))
 	realtimeHub := hub.NewRealtimeHub()
@@ -61,9 +68,30 @@ func main() {
 	mux.HandleFunc("/api/v1/health", h.HandleHealth)
 	mux.HandleFunc("/api/v1/turn-credentials", h.HandleTURNCredentials)
 
-	// 6. Servidor de Arquivos Estáticos (Painel Web do Técnico / PWA)
+	// 6. Servidor de Arquivos Estáticos com Fallback SPA (Single Page Application)
 	fs := http.FileServer(http.Dir(cfg.StaticDir))
-	mux.Handle("/", fs)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Não intercepta requisições de API ou WebSockets
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws") {
+			http.NotFound(w, r)
+			return
+		}
+
+		filePath := filepath.Join(cfg.StaticDir, filepath.Clean(r.URL.Path))
+		if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+			fs.ServeHTTP(w, r)
+			return
+		}
+
+		// Fallback SPA: qualquer rota desconhecida entrega o index.html
+		indexPath := filepath.Join(cfg.StaticDir, "index.html")
+		if _, err := os.Stat(indexPath); err == nil {
+			http.ServeFile(w, r, indexPath)
+			return
+		}
+
+		fs.ServeHTTP(w, r)
+	})
 
 	// Orquestra handler raiz com CORS
 	rootHandler := api.CORSMiddleware(mux)
@@ -106,4 +134,47 @@ func main() {
 	}
 
 	fmt.Println("[Server] Servidor finalizado com sucesso.")
+}
+
+func seedSuperAdmin(store database.Store) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	count, err := store.CountUsers(ctx)
+	if err != nil {
+		log.Printf("[Seed] Aviso: erro ao verificar usuários existentes: %v", err)
+		return
+	}
+
+	if count == 0 {
+		initialPassword := os.Getenv("ADMIN_INITIAL_PASSWORD")
+		if initialPassword == "" {
+			initialPassword = "VeloDeskAdmin2026!"
+		}
+
+		passHash, err := auth.HashPassword(initialPassword, auth.DefaultArgon2Params)
+		if err != nil {
+			log.Fatalf("[Seed] Erro crítico ao gerar hash da senha do super-admin: %v", err)
+		}
+
+		superAdmin := &database.User{
+			ID:           uuid.New(),
+			TenantID:     uuid.Nil,
+			Name:         "Super Administrator",
+			Email:        "admin@velodesk.com",
+			PasswordHash: passHash,
+			Role:         database.RoleSuperAdmin,
+			Status:       database.UserStatusActive,
+		}
+
+		if err := store.CreateUser(ctx, superAdmin); err != nil {
+			log.Fatalf("[Seed] Erro crítico ao criar Super-Admin inicial: %v", err)
+		}
+
+		log.Printf("==================================================")
+		log.Printf("  [Seed] Super-Admin inicial criado com sucesso!")
+		log.Printf("  E-mail : admin@velodesk.com")
+		log.Printf("  Role   : %s", database.RoleSuperAdmin)
+		log.Printf("==================================================")
+	}
 }

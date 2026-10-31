@@ -10,23 +10,26 @@ CREATE TABLE IF NOT EXISTS tenants (
     logo_url TEXT DEFAULT '',
     primary_color VARCHAR(16) DEFAULT '#2563EB',
     max_devices INT DEFAULT 100,
+    status VARCHAR(32) DEFAULT 'ACTIVE',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. Users (Técnicos, Admins, Auditores)
+-- 2. Users (Técnicos, Admins, Super-Admins)
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL,
+    status VARCHAR(32) DEFAULT 'ACTIVE',
     mfa_secret VARCHAR(128) DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(tenant_id, email)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(LOWER(email));
 
 -- 3. Device Groups (Hierarquia de Pastas / Unidades)
 CREATE TABLE IF NOT EXISTS device_groups (

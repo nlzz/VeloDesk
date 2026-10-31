@@ -81,16 +81,19 @@ func (p *PostgresStore) CreateTenant(ctx context.Context, tenant *Tenant) error 
 	if tenant.ID == uuid.Nil {
 		tenant.ID = uuid.New()
 	}
+	if tenant.Status == "" {
+		tenant.Status = TenantStatusActive
+	}
 	now := time.Now().UTC()
 	tenant.CreatedAt = now
 	tenant.UpdatedAt = now
 
 	query := `
-		INSERT INTO tenants (id, name, slug, logo_url, primary_color, max_devices, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO tenants (id, name, slug, logo_url, primary_color, max_devices, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err := p.db.ExecContext(ctx, query,
-		tenant.ID, tenant.Name, tenant.Slug, tenant.LogoURL, tenant.PrimaryColor, tenant.MaxDevices, tenant.CreatedAt, tenant.UpdatedAt,
+		tenant.ID, tenant.Name, tenant.Slug, tenant.LogoURL, tenant.PrimaryColor, tenant.MaxDevices, tenant.Status, tenant.CreatedAt, tenant.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("falha ao criar tenant: %w", err)
@@ -99,10 +102,10 @@ func (p *PostgresStore) CreateTenant(ctx context.Context, tenant *Tenant) error 
 }
 
 func (p *PostgresStore) GetTenantByID(ctx context.Context, id uuid.UUID) (*Tenant, error) {
-	query := `SELECT id, name, slug, logo_url, primary_color, max_devices, created_at, updated_at FROM tenants WHERE id = $1`
+	query := `SELECT id, name, slug, logo_url, primary_color, max_devices, COALESCE(status, 'ACTIVE'), created_at, updated_at FROM tenants WHERE id = $1`
 	var t Tenant
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
-		&t.ID, &t.Name, &t.Slug, &t.LogoURL, &t.PrimaryColor, &t.MaxDevices, &t.CreatedAt, &t.UpdatedAt,
+		&t.ID, &t.Name, &t.Slug, &t.LogoURL, &t.PrimaryColor, &t.MaxDevices, &t.Status, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -114,10 +117,10 @@ func (p *PostgresStore) GetTenantByID(ctx context.Context, id uuid.UUID) (*Tenan
 }
 
 func (p *PostgresStore) GetTenantBySlug(ctx context.Context, slug string) (*Tenant, error) {
-	query := `SELECT id, name, slug, logo_url, primary_color, max_devices, created_at, updated_at FROM tenants WHERE slug = $1`
+	query := `SELECT id, name, slug, logo_url, primary_color, max_devices, COALESCE(status, 'ACTIVE'), created_at, updated_at FROM tenants WHERE slug = $1`
 	var t Tenant
 	err := p.db.QueryRowContext(ctx, query, slug).Scan(
-		&t.ID, &t.Name, &t.Slug, &t.LogoURL, &t.PrimaryColor, &t.MaxDevices, &t.CreatedAt, &t.UpdatedAt,
+		&t.ID, &t.Name, &t.Slug, &t.LogoURL, &t.PrimaryColor, &t.MaxDevices, &t.Status, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -128,8 +131,29 @@ func (p *PostgresStore) GetTenantBySlug(ctx context.Context, slug string) (*Tena
 	return &t, nil
 }
 
+func (p *PostgresStore) UpdateTenant(ctx context.Context, tenant *Tenant) error {
+	now := time.Now().UTC()
+	tenant.UpdatedAt = now
+	query := `
+		UPDATE tenants
+		SET name = $2, slug = $3, logo_url = $4, primary_color = $5, max_devices = $6, status = $7, updated_at = $8
+		WHERE id = $1
+	`
+	res, err := p.db.ExecContext(ctx, query,
+		tenant.ID, tenant.Name, tenant.Slug, tenant.LogoURL, tenant.PrimaryColor, tenant.MaxDevices, tenant.Status, tenant.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("falha ao atualizar tenant: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil || rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (p *PostgresStore) ListTenants(ctx context.Context) ([]Tenant, error) {
-	query := `SELECT id, name, slug, logo_url, primary_color, max_devices, created_at, updated_at FROM tenants ORDER BY created_at DESC`
+	query := `SELECT id, name, slug, logo_url, primary_color, max_devices, COALESCE(status, 'ACTIVE'), created_at, updated_at FROM tenants ORDER BY created_at DESC`
 	rows, err := p.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -139,7 +163,7 @@ func (p *PostgresStore) ListTenants(ctx context.Context) ([]Tenant, error) {
 	var tenants []Tenant
 	for rows.Next() {
 		var t Tenant
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.LogoURL, &t.PrimaryColor, &t.MaxDevices, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.LogoURL, &t.PrimaryColor, &t.MaxDevices, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		tenants = append(tenants, t)
@@ -147,22 +171,43 @@ func (p *PostgresStore) ListTenants(ctx context.Context) ([]Tenant, error) {
 	return tenants, rows.Err()
 }
 
+func (p *PostgresStore) CountDevicesByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM devices WHERE tenant_id = $1`
+	err := p.db.QueryRowContext(ctx, query, tenantID).Scan(&count)
+	return count, err
+}
+
 // Users
 func (p *PostgresStore) CreateUser(ctx context.Context, user *User) error {
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
 	}
+	if user.Status == "" {
+		user.Status = UserStatusActive
+	}
 	now := time.Now().UTC()
 	user.CreatedAt = now
 	user.UpdatedAt = now
 
+	if user.TenantID == uuid.Nil {
+		query := `
+			INSERT INTO users (id, tenant_id, name, email, password_hash, role, status, mfa_secret, created_at, updated_at)
+			VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)
+		`
+		_, err := p.db.ExecContext(ctx, query,
+			user.ID, user.Name, user.Email, user.PasswordHash, user.Role, user.Status, user.MFASecret, user.CreatedAt, user.UpdatedAt,
+		)
+		return err
+	}
+
 	return p.WithTenantTx(ctx, user.TenantID, func(tx *sql.Tx) error {
 		query := `
-			INSERT INTO users (id, tenant_id, name, email, password_hash, role, mfa_secret, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			INSERT INTO users (id, tenant_id, name, email, password_hash, role, status, mfa_secret, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		`
 		_, err := tx.ExecContext(ctx, query,
-			user.ID, user.TenantID, user.Name, user.Email, user.PasswordHash, user.Role, user.MFASecret, user.CreatedAt, user.UpdatedAt,
+			user.ID, user.TenantID, user.Name, user.Email, user.PasswordHash, user.Role, user.Status, user.MFASecret, user.CreatedAt, user.UpdatedAt,
 		)
 		return err
 	})
@@ -171,10 +216,25 @@ func (p *PostgresStore) CreateUser(ctx context.Context, user *User) error {
 func (p *PostgresStore) GetUserByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*User, error) {
 	var u User
 	err := p.WithTenantTx(ctx, tenantID, func(tx *sql.Tx) error {
-		query := `SELECT id, tenant_id, name, email, password_hash, role, mfa_secret, created_at, updated_at FROM users WHERE email = $1`
+		query := `SELECT id, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'), name, email, password_hash, role, COALESCE(status, 'ACTIVE'), mfa_secret, created_at, updated_at FROM users WHERE email = $1`
 		row := tx.QueryRowContext(ctx, query, email)
-		return row.Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt)
+		return row.Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.Status, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt)
 	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (p *PostgresStore) GetUserByEmailGlobal(ctx context.Context, email string) (*User, error) {
+	query := `SELECT id, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'), name, email, password_hash, role, COALESCE(status, 'ACTIVE'), mfa_secret, created_at, updated_at FROM users WHERE LOWER(email) = LOWER($1)`
+	var u User
+	err := p.db.QueryRowContext(ctx, query, email).Scan(
+		&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.Status, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -187,10 +247,25 @@ func (p *PostgresStore) GetUserByEmail(ctx context.Context, tenantID uuid.UUID, 
 func (p *PostgresStore) GetUserByID(ctx context.Context, tenantID, userID uuid.UUID) (*User, error) {
 	var u User
 	err := p.WithTenantTx(ctx, tenantID, func(tx *sql.Tx) error {
-		query := `SELECT id, tenant_id, name, email, password_hash, role, mfa_secret, created_at, updated_at FROM users WHERE id = $1`
+		query := `SELECT id, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'), name, email, password_hash, role, COALESCE(status, 'ACTIVE'), mfa_secret, created_at, updated_at FROM users WHERE id = $1`
 		row := tx.QueryRowContext(ctx, query, userID)
-		return row.Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt)
+		return row.Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.Status, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt)
 	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (p *PostgresStore) GetUserByIDGlobal(ctx context.Context, userID uuid.UUID) (*User, error) {
+	query := `SELECT id, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'), name, email, password_hash, role, COALESCE(status, 'ACTIVE'), mfa_secret, created_at, updated_at FROM users WHERE id = $1`
+	var u User
+	err := p.db.QueryRowContext(ctx, query, userID).Scan(
+		&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.Status, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -203,7 +278,7 @@ func (p *PostgresStore) GetUserByID(ctx context.Context, tenantID, userID uuid.U
 func (p *PostgresStore) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]User, error) {
 	var users []User
 	err := p.WithTenantTx(ctx, tenantID, func(tx *sql.Tx) error {
-		query := `SELECT id, tenant_id, name, email, password_hash, role, mfa_secret, created_at, updated_at FROM users ORDER BY created_at DESC`
+		query := `SELECT id, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'), name, email, password_hash, role, COALESCE(status, 'ACTIVE'), mfa_secret, created_at, updated_at FROM users ORDER BY created_at DESC`
 		rows, err := tx.QueryContext(ctx, query)
 		if err != nil {
 			return err
@@ -212,7 +287,7 @@ func (p *PostgresStore) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]Us
 
 		for rows.Next() {
 			var u User
-			if err := rows.Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			if err := rows.Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.Status, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt); err != nil {
 				return err
 			}
 			users = append(users, u)
@@ -220,6 +295,32 @@ func (p *PostgresStore) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]Us
 		return rows.Err()
 	})
 	return users, err
+}
+
+func (p *PostgresStore) ListAllUsers(ctx context.Context) ([]User, error) {
+	query := `SELECT id, COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'), name, email, password_hash, role, COALESCE(status, 'ACTIVE'), mfa_secret, created_at, updated_at FROM users ORDER BY created_at DESC`
+	rows, err := p.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.Status, &u.MFASecret, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (p *PostgresStore) CountUsers(ctx context.Context) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM users`
+	err := p.db.QueryRowContext(ctx, query).Scan(&count)
+	return count, err
 }
 
 // Groups & Tags
