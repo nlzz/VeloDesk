@@ -9,8 +9,7 @@
   "scripts": {
     "dev": "npm run dev --workspace=viewer",
     "build": "npm run build --workspace=viewer && node scripts/copy-dist.js",
-    "start": "vite preview --outDir dist --host 0.0.0.0",
-    "preview": "vite preview --outDir dist --host 0.0.0.0",
+    "start": "node server.js",
     "test": "npm run test --workspace=viewer"
   },
   "dependencies": {
